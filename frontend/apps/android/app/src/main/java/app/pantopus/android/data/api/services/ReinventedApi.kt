@@ -3,15 +3,22 @@ package app.pantopus.android.data.api.services
 import app.pantopus.android.data.api.models.moments.MomentEnvelope
 import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedAtlasResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedCircleChangeBody
+import app.pantopus.android.data.api.models.reinvented.ReinventedCircleEnvelope
+import app.pantopus.android.data.api.models.reinvented.ReinventedCircleKeepBody
+import app.pantopus.android.data.api.models.reinvented.ReinventedCircleMakeBody
+import app.pantopus.android.data.api.models.reinvented.ReinventedCirclesResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedExploreResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedKeepBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedMagazineResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMapResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMomentPlanResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -37,6 +44,8 @@ interface ReinventedApi {
         @Query("longitude") longitude: String?,
         @Query("cursor") cursor: String?,
         @Query("limit") limit: Int = PAGE,
+        // CONTRACT 8d: with reach=close, only this circle's people who are in.
+        @Query("circle") circle: String? = null,
     ): ReinventedListResponse
 
     /**
@@ -117,6 +126,58 @@ interface ReinventedApi {
         @Query("guests") guests: String = "1",
         @Query("extras") extras: String = "1",
     ): ReinventedMomentPlanResponse
+
+    /** CONTRACT 8d: the circles the reader is in, and the ones they are invited to. [tz] is the reader's own zone. */
+    @GET("api/reinvented/circles")
+    suspend fun circles(
+        @Query("tz") tz: String?,
+    ): ReinventedCirclesResponse
+
+    @POST("api/reinvented/circles")
+    suspend fun makeCircle(
+        @Body body: ReinventedCircleMakeBody,
+    ): ReinventedCircleEnvelope
+
+    /** An invitee's yes, with their own Keep choice. */
+    @POST("api/reinvented/circles/{id}/join")
+    suspend fun joinCircle(
+        @Path("id") id: String,
+        @Body body: ReinventedCircleKeepBody,
+    ): ReinventedCircleEnvelope
+
+    /** A member's own Keep choice for this circle. */
+    @POST("api/reinvented/circles/{id}/me")
+    suspend fun circleKeep(
+        @Path("id") id: String,
+        @Body body: ReinventedCircleKeepBody,
+    ): ReinventedCircleEnvelope
+
+    /** Leave a circle, or say no to an invite (nobody is told who said no). */
+    @POST("api/reinvented/circles/{id}/leave")
+    suspend fun leaveCircle(
+        @Path("id") id: String,
+    )
+
+    /** The maker renames it, or invites or removes people. */
+    @PATCH("api/reinvented/circles/{id}")
+    suspend fun changeCircle(
+        @Path("id") id: String,
+        @Body body: ReinventedCircleChangeBody,
+    ): ReinventedCircleEnvelope
+
+    /** The maker ends it. */
+    @DELETE("api/reinvented/circles/{id}")
+    suspend fun endCircle(
+        @Path("id") id: String,
+    )
+
+    /** The circle's week, laid out (a member who is in). [week] is any day of the week wanted. */
+    @GET("api/reinvented/circles/{id}/magazine")
+    suspend fun magazine(
+        @Path("id") id: String,
+        @Query("week") week: String?,
+        @Query("tz") tz: String?,
+    ): ReinventedMagazineResponse
 
     companion object {
         /** Moments on a page of My Atlas. */

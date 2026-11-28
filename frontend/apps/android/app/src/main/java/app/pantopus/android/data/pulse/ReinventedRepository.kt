@@ -4,9 +4,15 @@ import app.pantopus.android.data.api.models.moments.MomentEnvelope
 import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedAtlasResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedCircleChangeBody
+import app.pantopus.android.data.api.models.reinvented.ReinventedCircleDto
+import app.pantopus.android.data.api.models.reinvented.ReinventedCircleKeepBody
+import app.pantopus.android.data.api.models.reinvented.ReinventedCircleMakeBody
+import app.pantopus.android.data.api.models.reinvented.ReinventedCirclesResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedExploreResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedKeepBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedMagazineResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMapResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
 import app.pantopus.android.data.api.net.NetworkError
@@ -53,8 +59,10 @@ class ReinventedRepository
             chip: String,
             at: ReinventedPoint?,
             cursor: String?,
+            // CONTRACT 8d: one circle of the reader's, with `close`.
+            circle: String? = null,
         ): NetworkResult<ReinventedListResponse> =
-            guarded { api.list(reach, miles, chip, at?.latitude?.let(::degrees), at?.longitude?.let(::degrees), cursor) }
+            guarded { api.list(reach, miles, chip, at?.latitude?.let(::degrees), at?.longitude?.let(::degrees), cursor, circle = circle) }
 
         /** The map for a box and a time (CONTRACT 6b). */
         suspend fun map(
@@ -95,6 +103,44 @@ class ReinventedRepository
             momentId: String,
             body: CreatePlanBody,
         ): NetworkResult<PlanDto> = guarded(behindOn404 = false) { api.startPlan(momentId, body).plan }
+
+        /** CONTRACT 8d: the reader's circles and invites. An older server's 404 leaves circles out. */
+        suspend fun circles(): NetworkResult<ReinventedCirclesResponse> = guarded(behindOn404 = false) { api.circles(zone()) }
+
+        suspend fun makeCircle(
+            name: String,
+            people: List<String>,
+        ): NetworkResult<ReinventedCircleDto?> =
+            guarded(behindOn404 = false) { api.makeCircle(ReinventedCircleMakeBody(name, people)).circle }
+
+        suspend fun joinCircle(
+            id: String,
+            keepFaded: Boolean,
+        ): NetworkResult<ReinventedCircleDto?> =
+            guarded(behindOn404 = false) { api.joinCircle(id, ReinventedCircleKeepBody(keepFaded)).circle }
+
+        suspend fun circleKeep(
+            id: String,
+            keepFaded: Boolean,
+        ): NetworkResult<ReinventedCircleDto?> =
+            guarded(behindOn404 = false) { api.circleKeep(id, ReinventedCircleKeepBody(keepFaded)).circle }
+
+        suspend fun leaveCircle(id: String): NetworkResult<Unit> = guarded(behindOn404 = false) { api.leaveCircle(id) }
+
+        suspend fun changeCircle(
+            id: String,
+            change: ReinventedCircleChangeBody,
+        ): NetworkResult<ReinventedCircleDto?> = guarded(behindOn404 = false) { api.changeCircle(id, change).circle }
+
+        suspend fun endCircle(id: String): NetworkResult<Unit> = guarded(behindOn404 = false) { api.endCircle(id) }
+
+        suspend fun magazine(
+            id: String,
+            week: String?,
+        ): NetworkResult<ReinventedMagazineResponse> = guarded(behindOn404 = false) { api.magazine(id, week, zone()) }
+
+        /** The reader's own zone, for the week's day. */
+        private fun zone(): String = java.time.ZoneId.systemDefault().id
 
         private suspend fun <T> guarded(
             behindOn404: Boolean = true,

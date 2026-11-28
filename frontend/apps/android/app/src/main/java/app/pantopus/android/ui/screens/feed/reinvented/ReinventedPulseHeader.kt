@@ -64,6 +64,7 @@ internal fun ReinventedPulseHeader(
     atlas: Boolean = false,
     onAtlas: (Boolean) -> Unit = {},
     sideBySide: Boolean = false,
+    onPickCircle: (String, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     var showsDial by rememberSaveable { mutableStateOf(false) }
@@ -105,6 +106,11 @@ internal fun ReinventedPulseHeader(
                 onPickReach(reach, miles)
             },
             onDismiss = { showsDial = false },
+            circleId = state.circleId,
+            onPickCircle = { id, name ->
+                showsDial = false
+                onPickCircle(id, name)
+            },
         )
     }
 }
@@ -164,7 +170,7 @@ private fun ScopePill(
 /** "Camas · 25 mi", "Around me" before the town is known, or "Close circle". */
 internal fun scopeTitle(state: ReinventedPulseState): String =
     when (state.reach) {
-        ReinventedPulseViewModel.CLOSE -> "Close circle"
+        ReinventedPulseViewModel.CLOSE -> state.circleName ?: "Close circle"
         ReinventedPulseViewModel.EXPLORE -> "Explore"
         else -> state.placeLabel?.let { "$it · ${state.miles} mi" } ?: "Around me"
     }
