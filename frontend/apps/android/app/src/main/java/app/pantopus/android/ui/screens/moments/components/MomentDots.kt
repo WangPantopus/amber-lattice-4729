@@ -208,6 +208,8 @@ private fun DotCard(
                 .holdsItsFinger()
                 .shadow(8.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
+                // Opaque: a dot under the card must not show through it (the bar's colour is see-through).
+                .background(Color.Black)
                 .background(PantopusColors.studioBar)
                 .padding(horizontal = 14.dp, vertical = 12.dp)
                 .testTag("moments.viewer.dotCard"),
