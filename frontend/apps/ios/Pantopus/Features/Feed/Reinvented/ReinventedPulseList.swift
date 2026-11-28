@@ -117,7 +117,7 @@ struct ReinventedPulseList: View {
     private func keptCard(_ moment: MomentDTO) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
             // A Retake's row (CONTRACT 8e) says so; it opens the whole Retake.
-            Text(moment.together.retake?.tag ?? moment.together.convergence?.tag ?? "Kept · stays")
+            Text(moment.together.retake?.tag ?? moment.together.convergence?.tag ?? moment.together.pinboard?.tag ?? "Kept · stays")
                 .font(.system(size: 12.5, weight: .bold))
                 .foregroundStyle(Theme.Color.primaryTint)
                 .padding(.horizontal, Spacing.s4)

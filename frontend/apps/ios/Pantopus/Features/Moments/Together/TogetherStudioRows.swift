@@ -21,12 +21,15 @@ struct TogetherStudioRows: View {
                     addingRow(title: title, hasGhost: ghost != nil, photo: model.isPhoto)
                 } else if case let .eyesOnAnswer(_, question) = together.context {
                     answeringRow(question)
+                } else if case let .pinboardPiece(_, prompt) = together.context {
+                    pieceRow(prompt, photo: model.isPhoto)
                 } else if model.offersEyesOnAsk {
                     eyesOnAskRow
                 } else {
                     if model.offersRetake { retakeRow }
                     if model.offersSeal { sealRow }
                     if model.offersSky { skyRow }
+                    if model.offersPinboard { pinboardRow }
                 }
             }
             .onAppear { together.claim(model) }
@@ -184,6 +187,55 @@ struct TogetherStudioRows: View {
                     }
                     .accessibilityLabel("The Retake's name")
                     .accessibilityIdentifier("together.studio.retakeTitle")
+            }
+        }
+        .padding(.horizontal, Spacing.s1)
+    }
+
+    /// "Adding your piece to “Best fall tree on your walk”".
+    private func pieceRow(_ prompt: String, photo: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Adding your piece to “\(prompt)”")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.Color.appText)
+            Text(photo
+                ? "Your photo joins the pinboard and stays. One piece each."
+                : "Only a photo joins the pinboard. This posts as an ordinary Moment.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.Color.appTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, Spacing.s1)
+        .padding(.vertical, Spacing.s2)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("together.studio.piece")
+    }
+
+    /// "Start a pinboard", and its prompt (8i).
+    private var pinboardRow: some View {
+        VStack(alignment: .leading, spacing: Spacing.s2) {
+            Toggle(isOn: $together.startsPinboard) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Start a pinboard")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Theme.Color.appText)
+                    Text("A prompt others add their own photo to for a week, one each. It stays.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.Color.appTextSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Theme.Color.primarySolid)
+            .frame(minHeight: 52)
+            .accessibilityIdentifier("together.studio.pinboard")
+            if together.startsPinboard {
+                TextField("Best fall tree on your walk", text: $together.pinboardPrompt)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: together.pinboardPrompt) { _, new in
+                        if new.count > 80 { together.pinboardPrompt = String(new.prefix(80)) }
+                    }
+                    .accessibilityLabel("The pinboard’s prompt")
+                    .accessibilityIdentifier("together.studio.pinboardPrompt")
             }
         }
         .padding(.horizontal, Spacing.s1)

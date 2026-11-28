@@ -72,6 +72,7 @@ struct ReinventedPulseView: View {
         }
         .modifier(MomentRetakeListSheet())
         .modifier(MomentConvergenceListSheet())
+        .modifier(MomentPinboardListSheet())
     }
 
     /// One camera (PHASE-1 §2.11): + opens the Studio. Its "+ Ask / Kind" comes with that piece.
@@ -291,6 +292,7 @@ struct ReinventedPulseView: View {
     private func open(_ moment: MomentDTO) {
         if RetakePrompt.shared.opens(moment) { return }
         if ConvergencePrompt.shared.opens(moment) { return }
+        if PinboardPrompt.shared.opens(moment) { return }
         let ring = MomentRingDTO(moment: moment, mine: model.isMine(moment))
         watch(ring)
     }

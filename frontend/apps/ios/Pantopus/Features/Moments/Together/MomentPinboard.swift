@@ -1,0 +1,302 @@
+//
+//  MomentPinboard.swift
+//  Pantopus
+//
+//  Pinboards ("Pulse, reinvented" phase 3, PHASE-3 piece 3; CONTRACT 8i): add your piece to a shared prompt, such as
+//  "Best fall tree on your walk". A pinboard is its first photo and the pieces people add for a week, one each; it
+//  stays. In Pulse it is one row ("Pinboard · 4 pieces") that opens the board; in the viewer a chip opens it too.
+//  "Add your piece" opens the Studio with the prompt in its drawer. Only while the switch is on. Words as the web's.
+//
+
+import Observation
+import SwiftUI
+
+/// `pinboard` on a Moment answer (switch on): the pinboard this Moment starts or is a piece of.
+struct MomentPinboardDTO: Decodable, Hashable {
+    let startId: String
+    let prompt: String
+    let pieces: Int
+    let open: Bool
+    let isStart: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case prompt, pieces, open
+        case startId = "start_id"
+        case isStart = "is_start"
+    }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        startId = try c.decode(String.self, forKey: .startId)
+        prompt = (try? c.decodeIfPresent(String.self, forKey: .prompt)) ?? ""
+        pieces = (try? c.decodeIfPresent(Int.self, forKey: .pieces)) ?? 1
+        open = (try? c.decodeIfPresent(Bool.self, forKey: .open)) ?? false
+        isStart = (try? c.decodeIfPresent(Bool.self, forKey: .isStart)) ?? false
+    }
+
+    /// "Pinboard · 4 pieces".
+    var tag: String {
+        "Pinboard · \(pieces) \(pieces == 1 ? "piece" : "pieces")"
+    }
+}
+
+/// `GET /api/reinvented/pinboards/:id`: the prompt and the pieces this reader may see, newest first.
+struct PinboardDTO: Decodable {
+    struct Piece: Decodable, Identifiable, Hashable {
+        let id: String
+        let author: MomentAuthorDTO?
+        let picture: URL?
+
+        private enum CodingKeys: String, CodingKey {
+            case id, author
+            case thumbURL = "thumb_url"
+            case mediaURL = "media_url"
+        }
+
+        init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            author = try? c.decodeIfPresent(MomentAuthorDTO.self, forKey: .author)
+            let media = (try? c.decodeIfPresent(String.self, forKey: .mediaURL)) ?? nil
+            let thumb = (try? c.decodeIfPresent(String.self, forKey: .thumbURL)) ?? nil
+            picture = (media ?? thumb).flatMap(URL.init(string:))
+        }
+    }
+
+    let startId: String
+    let prompt: String
+    let startedBy: MomentAuthorDTO?
+    let openUntil: Date?
+    let open: Bool
+    let pieces: [Piece]
+    let canAdd: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case prompt, open, pieces
+        case startId = "start_id"
+        case startedBy = "started_by"
+        case openUntil = "open_until"
+        case canAdd = "can_add"
+    }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        startId = try c.decode(String.self, forKey: .startId)
+        prompt = (try? c.decodeIfPresent(String.self, forKey: .prompt)) ?? ""
+        startedBy = try? c.decodeIfPresent(MomentAuthorDTO.self, forKey: .startedBy)
+        openUntil = MomentTime.parse(try? c.decodeIfPresent(String.self, forKey: .openUntil))
+        open = (try? c.decodeIfPresent(Bool.self, forKey: .open)) ?? false
+        pieces = (try? c.decodeIfPresent([Piece].self, forKey: .pieces)) ?? []
+        canAdd = (try? c.decodeIfPresent(Bool.self, forKey: .canAdd)) ?? false
+    }
+}
+
+private struct PinboardEnvelope: Decodable {
+    let pinboard: PinboardDTO
+}
+
+enum PinboardEndpoints {
+    /// `GET /api/reinvented/pinboards/:id` (the start's id or any piece's). Route `backend/routes/reinvented.js`.
+    static func pinboard(_ id: String) -> Endpoint {
+        Endpoint(
+            method: .get,
+            path: "/api/reinvented/pinboards/\(id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id)",
+            cachePolicy: .reloadIgnoringLocalCacheData
+        )
+    }
+}
+
+/// The pinboard open, from Pulse's list (`fromList`) or from the viewer, one at a time.
+@Observable
+@MainActor
+final class PinboardPrompt {
+    static let shared = PinboardPrompt()
+
+    struct Open: Identifiable, Equatable {
+        let id: String
+    }
+
+    var fromList: Open?
+    var inViewer: Open?
+
+    /// A Moment of a pinboard opens the board (switch on); anything else opens as before.
+    func opens(_ moment: MomentDTO) -> Bool {
+        guard PulseReinventedFlags.shared.isOn, let board = moment.together.pinboard else { return false }
+        fromList = Open(id: board.startId)
+        return true
+    }
+
+    /// "Add your piece": the Studio opens over Pulse with the prompt in its drawer, once whatever was in front has closed.
+    func addPiece(to board: PinboardDTO) {
+        fromList = nil
+        inViewer = nil
+        TogetherStudio.shared.reset()
+        TogetherStudio.shared.context = .pinboardPiece(startId: board.startId, prompt: board.prompt)
+        Task {
+            try? await Task.sleep(for: .milliseconds(600))
+            ReinventedStudioPresenter.shared.composing = MomentsComposeRequest(model: MomentsComposerModel(), studio: true)
+        }
+    }
+}
+
+/// Pulse's list opens a pinboard here (`ReinventedPulseView`).
+struct MomentPinboardListSheet: ViewModifier {
+    @State private var prompt = PinboardPrompt.shared
+
+    func body(content: Content) -> some View {
+        content.sheet(item: $prompt.fromList) { open in
+            MomentPinboardView(id: open.id) { prompt.addPiece(to: $0) }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+}
+
+/// The pinboard: its prompt, who started it, its pieces newest first, and "Add your piece" while it is open.
+struct MomentPinboardView: View {
+    let id: String
+    let onAdd: (PinboardDTO) -> Void
+    @State private var board: PinboardDTO?
+    @State private var failed = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.s3) {
+                header
+                if let board {
+                    pieces(board.pieces)
+                    if board.canAdd {
+                        Button { onAdd(board) } label: {
+                            Text("Add your piece")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .background(Capsule().fill(Theme.Color.primarySolid))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("together.pinboard.add")
+                    } else {
+                        note(board.open ? "You’ve added your piece." : "This pinboard has closed.")
+                    }
+                } else {
+                    note(failed ? "This pinboard couldn’t load." : "Loading…")
+                }
+            }
+            .padding(Spacing.s4)
+        }
+        .background(Theme.Color.appBg)
+        .task(id: id) { await read() }
+        .accessibilityIdentifier("together.pinboard")
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Pinboard")
+                .font(.system(size: 12.5, weight: .bold))
+                .foregroundStyle(Theme.Color.primaryTint)
+                .textCase(.uppercase)
+            Text(board?.prompt ?? "…")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(Theme.Color.appText)
+                .accessibilityAddTraits(.isHeader)
+            if let board {
+                Text(subtitle(board))
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+            }
+        }
+    }
+
+    /// "Started by Ivy Sato · 4 pieces · open until Tue, Dec 2", or "… · closed".
+    private func subtitle(_ board: PinboardDTO) -> String {
+        let count = board.pieces.count
+        let until = board.openUntil.map { "open until \($0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))" }
+        return [
+            "Started by \(board.startedBy?.name ?? "someone")",
+            "\(count) \(count == 1 ? "piece" : "pieces")",
+            board.open ? (until ?? "open") : "closed",
+        ].joined(separator: " · ")
+    }
+
+    private func pieces(_ pieces: [PinboardDTO.Piece]) -> some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: Spacing.s2), GridItem(.flexible(), spacing: Spacing.s2)], spacing: Spacing.s2) {
+            ForEach(pieces) { piece in
+                VStack(alignment: .leading, spacing: 4) {
+                    AsyncImage(url: piece.picture) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Theme.Color.appSurfaceSunken
+                    }
+                    .frame(height: 180)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: Radii.md))
+                    Text(piece.author?.name ?? "Someone")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(Theme.Color.appTextSecondary)
+                        .lineLimit(1)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(piece.author?.name ?? "Someone")’s piece")
+            }
+        }
+    }
+
+    private func note(_ words: String) -> some View {
+        Text(words)
+            .font(.system(size: 14))
+            .foregroundStyle(Theme.Color.appTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func read() async {
+        do {
+            let answer: PinboardEnvelope = try await MomentsAPI.send(PinboardEndpoints.pinboard(id))
+            board = answer.pinboard
+        } catch {
+            failed = true
+            await PulseReinventedFlags.shared.recheck()
+        }
+    }
+}
+
+/// In the viewer's chip row: "Pinboard · 4 pieces", opening the board over the viewer.
+struct MomentPinboardChip: View {
+    let model: MomentsViewerModel
+    @State private var prompt = PinboardPrompt.shared
+
+    var body: some View {
+        if PulseReinventedFlags.shared.isOn, let board = model.moment?.together.pinboard {
+            Button { prompt.inViewer = .init(id: board.startId) } label: {
+                HStack(spacing: 6) {
+                    Icon(.layoutGrid, size: 15, strokeWidth: 2.2, color: .white)
+                    Text(board.tag)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(Color.black.opacity(0.45)))
+                .overlay(Capsule().stroke(Color.white.opacity(0.35), lineWidth: 1))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens the pinboard's pieces")
+            .accessibilityIdentifier("moments.viewer.pinboard")
+            .sheet(item: $prompt.inViewer) { open in
+                MomentPinboardView(id: open.id) { board in
+                    model.close()
+                    prompt.addPiece(to: board)
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+        }
+    }
+}
+
+extension MomentsViewerModel {
+    /// The viewer holds still while a pinboard is open over it.
+    var pinboardOpen: Bool {
+        PinboardPrompt.shared.inViewer != nil
+    }
+}
