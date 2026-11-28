@@ -51,7 +51,7 @@ import { useDialogFocusTrap } from '@/lib/useDialogFocusTrap';
 import { withFreshFix } from '@/lib/freshPostFix';
 import MomentCamera, { type CameraCapture } from '@/components/moments/MomentCamera';
 import { blankArt, edited, inks, type Artwork, type Stroke } from '@/components/moments/momentArtwork';
-import { stageFrame } from './frame';
+import { offPicture, stageFrame } from './frame';
 import { BlurLayer, blurInto, type BlurBox } from './BlurTool';
 import { cutToShape, sideBySide } from './beforeAfter';
 import { beforeAfterOf } from '../play/BeforeAfter';
@@ -77,7 +77,7 @@ import type { PlayItem, PlayKind } from '../play/playTypes';
 import { SoundPanel } from '../sound/SoundPanel';
 import { timedWords, uploadSound, type Recording } from '../sound/record';
 import { DotEditLayer, DotEditPanel, dotsWire, MAX_DOTS, newDot, usePantopusAiOn, type DotDraft } from '../dots/DotEdit';
-import { safeBox, STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
+import { STAMP_KINDS, stampLabel, type PlacedStamp, type StampKind, type StampValues } from '../stamps/stampTypes';
 import { isSwitchedOff } from '../switchOff';
 import StudioPicture, { type StudioBrush, type StudioTool } from './StudioPicture';
 import {
@@ -122,7 +122,6 @@ const PlacePreview = dynamic(() => import('@/components/moments/MomentPlacePrevi
 const fallback = { max_seconds: 30, max_parts: 1, max_bytes: 50 * 1024 * 1024 };
 const inkNames = ['White', 'Black', 'Yellow', 'Red', 'Blue', 'Green'];
 const pens = [0.006, 0.012, 0.024];
-const STAMP_SAFE = safeBox();
 // At home the place line reads "Area · <town>"; the first time only, one line under it says why (design §4).
 const HOME_NOTE_KEY = 'pantopus.studio.homeAreaNoteSeen';
 // The step deck's note to its author, said once (CONTRACT 7g): "Readers can save your steps' words."
@@ -825,7 +824,12 @@ export default function Studio({
   /** The items that go out: a before and after only with its after photo. */
   const playOut = pair ? play : play.filter((p) => p.kind !== 'before_after');
   // Stamps, Play and dots are placed on the 9:16 stage; a picture posted at its own shape gets them where the stage drew it.
-  const frame = stageFrame(shape, mode !== 'media' || !file || edited(art));
+  // Stamps, playable items and dots go anywhere on the canvas (PHASE-6 F2). One placed off the picture's own box makes the
+  // Moment go up in its canvas form, so readers see it where it was put.
+  const itemsOff =
+    mode === 'media' && !!file && !edited(art) &&
+    offPicture(shape, [...stamps, ...play, ...dots].map((it) => ({ x: it.x as number, y: it.y as number })));
+  const frame = stageFrame(shape, mode !== 'media' || !file || edited(art) || itemsOff);
   const words = mode === 'text' ? text : caption;
   // Illuminate's suggestion (CONTRACT 7i, the table all three apps use): one chip at most, worked out here from what the
   // Studio holds; nothing is sent. Only while Pantopus AI is on for the person, never once the post carries a playable
@@ -895,7 +899,7 @@ export default function Studio({
       setPicked(null);
       return;
     }
-    // A free spot inside the part every viewer shows (safeBox), clear of the tool rail (top right) and of the stamps
+    // A free spot near the middle, clear of the tool rail (top right) and of the stamps
     // already down; the postmark low on the left, as on board B2.
     const slots =
       kind === 'postmark'
@@ -1084,7 +1088,7 @@ export default function Studio({
   async function composed(source: File, signal: AbortSignal): Promise<{ prepared: Awaited<ReturnType<typeof prepareMedia>>; placement: WholePlacement | null }> {
     const videoLimits = limits.data?.video || fallback;
     if (!(source.type.startsWith('video/') || /\.(mp4|mov|webm|m4v)$/i.test(source.name))) {
-      if (!edited(art)) return { prepared: await prepareMedia(source, art, videoLimits, signal, () => {}), placement: null };
+      if (!edited(art) && !itemsOff) return { prepared: await prepareMedia(source, art, videoLimits, signal, () => {}), placement: null };
       return { prepared: [{ file: await bakePhoto(source, art, backdrop) }], placement: null };
     }
     const drawn = !!(art.strokes.length || art.text.trim());
@@ -1101,7 +1105,7 @@ export default function Studio({
     const prepared = await prepareMedia(video, blankArt(), videoLimits, signal, (f) =>
       setBusy('Preparing video · ' + Math.round(f * 100) + '%'),
     );
-    return { prepared, placement: !drawn && !unmoved(art) && shape ? placementOf(shape.w, shape.h, art) : null };
+    return { prepared, placement: !drawn && (!unmoved(art) || itemsOff) && shape ? placementOf(shape.w, shape.h, art) : null };
   }
   async function submit(retry?: Job) {
     if (submitting.current) return;
@@ -2109,7 +2113,6 @@ export default function Studio({
                 selected={picked}
                 onSelect={setPicked}
                 onChange={tool || busy ? undefined : setStamps}
-                safe={STAMP_SAFE}
               />
             )}
             {composing && playOn && <PlayEditLayer items={play} onChange={setPlay} disabled={!!tool || !!busy} />}
