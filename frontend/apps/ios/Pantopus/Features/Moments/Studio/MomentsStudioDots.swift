@@ -246,14 +246,12 @@ extension View {
     /// open). Without them a video's dots, stamps and items were placed over the screen, while the viewer lays them over
     /// the video's frame filling the screen (a 9:16 video runs about 45 points past each side of an iPhone): a dot put
     /// near an edge landed off the reader's screen.
-    /// Retake also drops what belonged to the picture (`dropPictureTools`).
     func studioReadsVideoSize(_ model: MomentsComposerModel) -> some View {
         task(id: model.draft?.video) {
             guard case let .video(url) = model.draft, model.marking.video == nil else { return }
             guard let shown = await MomentsMediaExport.shown(url), model.draft == .video(url), model.marking.video == nil else { return }
             model.marking.opened(video: shown.size, seconds: shown.seconds)
         }
-        .onChange(of: model.draft == nil) { _, gone in if gone { model.dropPictureTools() } }
     }
 }
 
