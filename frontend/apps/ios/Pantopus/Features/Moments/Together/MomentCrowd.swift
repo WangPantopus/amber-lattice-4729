@@ -129,6 +129,9 @@ final class MomentCrowdPrompt {
 
 /// The scene from every phone: one picture at a time, one slider around it.
 struct MomentCrowdView: View {
+    /// The picture's box: room for the heading, the picture and the slider on the smallest iPhone.
+    static let pictureHeight: CGFloat = 400
+
     let id: String
     @State private var scene: MomentCrowdStore.Scene?
     @State private var loaded = false
@@ -172,12 +175,15 @@ struct MomentCrowdView: View {
         let start = scene.moments.firstIndex { $0.id == scene.center } ?? 0
         let index = min(last, max(0, Int((at ?? Double(start)).rounded())))
         let moment = scene.moments[index]
+        // One box for every phone's picture, so a tall one never pushes "Walk around it" off the screen while scrubbing.
         AsyncImage(url: moment.kind == .video ? moment.poster : moment.media) { image in
             image.resizable().scaledToFit()
         } placeholder: {
-            Theme.Color.appSurfaceSunken.frame(height: 320)
+            Theme.Color.appSurfaceSunken
         }
         .frame(maxWidth: .infinity)
+        .frame(height: Self.pictureHeight)
+        .background(Color.black)
         .clipShape(RoundedRectangle(cornerRadius: Radii.lg))
         .overlay(alignment: .topLeading) {
             Text([moment.author.name, moment.createdAtDate?.formatted(date: .omitted, time: .standard)].compactMap { $0 }
