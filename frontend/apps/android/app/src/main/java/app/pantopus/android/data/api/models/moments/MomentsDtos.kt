@@ -190,6 +190,8 @@ data class MomentDto(
     val retake: app.pantopus.android.data.api.models.reinvented.MomentRetakeStateDto? = null,
     /** "Pulse, reinvented" (CONTRACT 8h): the convergence it joined, for a reader whose switch is on; else null. */
     val convergence: app.pantopus.android.data.api.models.reinvented.MomentConvergenceStateDto? = null,
+    /** "Pulse, reinvented" (CONTRACT 8i): the pinboard it starts or is a piece of, for a reader whose switch is on; else null. */
+    val pinboard: app.pantopus.android.data.api.models.reinvented.MomentPinboardStateDto? = null,
 )
 
 /**
