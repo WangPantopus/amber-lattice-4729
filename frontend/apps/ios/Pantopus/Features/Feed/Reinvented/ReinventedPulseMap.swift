@@ -157,6 +157,7 @@ final class ReinventedMapModel {
                 + map.kept.map(Item.kept) + map.tickets.map(Item.ticket)
             arrangeDeck()
             MomentsGuessSpots.shared.spots = map.guessSpots
+            ReinventedLivingMap.shared.answered(response.data, region: region, time: time) // phase 4: floating, sun, beams
         case 404:
             ReinventedServer.shared.markBehind()
         case 403:
@@ -196,7 +197,9 @@ struct ReinventedPulseMap: View {
                         .onTapGesture { onOpen(item) }
                 }
             }
+            ReinventedBeamsContent(beams: model.atlas ? [] : ReinventedLivingMap.shared.beams, night: ReinventedLivingMap.shared.night)
         }
+        .reinventedNight() // phase 4: the map turns dark when the sun is down over it
         .mapControls {}
         .onMapCameraChange(frequency: .onEnd) { context in model.moved(to: context.region) }
         .accessibilityIdentifier("reinventedPulse.map")
@@ -213,7 +216,7 @@ struct ReinventedMapPin: View {
         Group {
             switch item {
             case let .ring(ring):
-                MomentRingPin(ring: ring)
+                ReinventedLivingRing(ring: ring) // phase 4: today's ring pin unless rings float
                     .accessibilityLabel("\(ring.author.shortName)'s Moment")
             case let .mark(mark):
                 markPin(PulseIntent.from(postType: mark.post.postType), headsUp: mark.headsUp)
@@ -222,10 +225,11 @@ struct ReinventedMapPin: View {
                 markPin(nil, headsUp: false)
                     .accessibilityLabel("A kept Moment")
             case let .ticket(ticket):
-                ticketPin(ticket)
+                ticketPin(ticket).reinventedBeacon(ticket) // phase 4: glows while rings float
             }
         }
         .scaleEffect(focused ? 1.18 : 1, anchor: .bottom)
+        .reinventedLit(item.id) // phase 4: lit or dimmed while the map shows what it was asked
         .animation(.spring(response: 0.3), value: focused)
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("reinventedPulse.pin.\(item.id)")
@@ -339,6 +343,7 @@ struct ReinventedPeekDeck: View {
         Button { onOpen(item) } label: {
             HStack(spacing: Spacing.s3) {
                 ReinventedMapPin(item: item, focused: false)
+                    .environment(\.reinventedFlat, true) // phase 4: the deck's pins stay flat
                     .frame(width: 64, height: 72)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title(item))

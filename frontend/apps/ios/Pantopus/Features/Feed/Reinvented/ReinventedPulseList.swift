@@ -59,12 +59,17 @@ struct ReinventedPulseList: View {
                 if let strip, !strip.isEmpty, model.reach != "explore" {
                     ReinventedAliveStrip(strip: strip, onOpenMoment: onOpenMoment, onOpenRing: onOpenRing)
                 }
+                // Your day (CONTRACT 8k): in the evening, the person's own photos of the day, private until they share.
+                if model.reach == "around", model.chip == "all" { YourDayCard() }
                 // Tonight in <town> (CONTRACT 8k): in the evening, on Around me's whole list, read once the list has come.
                 if model.reach == "around", model.chip == "all" { ReinventedTownFilmCard(onPlay: onOpenRun) }
                 // Eyes on near you (CONTRACT 8f): read only once the Ask chip is picked.
                 if model.chip == "ask" { EyesOnNearSection(viewer: model.viewer) }
                 // Relics near you (CONTRACT 8g): read only once the Spots chip is picked.
                 if model.chip == "spots" { RelicsNearSection() }
+                // Places you follow (CONTRACT 9c, phase 4): at the top of Explore.
+                if model.reach == "explore" { ReinventedFollowedPlacesSection(pulse: model, moment: onOpenMoment, post: onOpenPost) }
+                if model.reach == "close" { ReinventedWindowsRow() } // phase 4: homes talk to homes (CONTRACT 9f)
                 if model.isEmpty {
                     emptyNote
                 }
@@ -116,7 +121,11 @@ struct ReinventedPulseList: View {
         }
         // Tonight in <town> (8k): only in the evening, only once the list's first page is here (this view is the loaded list).
         .task(id: model.reach == "around" && model.chip == "all") {
-            if model.reach == "around", model.chip == "all" { await ReinventedTownFilmModel.shared.read() }
+            if model.reach == "around", model.chip == "all" {
+                async let day: Void = YourDayModel.shared.read()
+                await ReinventedTownFilmModel.shared.read()
+                await day
+            }
         }
         .accessibilityIdentifier("reinventedPulse.list")
     }

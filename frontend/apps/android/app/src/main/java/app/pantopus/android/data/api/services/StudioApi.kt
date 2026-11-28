@@ -10,6 +10,7 @@ import app.pantopus.android.data.api.models.moments.MomentStampsPreviewBody
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewResponse
 import okhttp3.RequestBody
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
@@ -72,4 +73,14 @@ interface StudioApi {
         @Query("latitude") latitude: Double,
         @Query("longitude") longitude: Double,
     ): MomentDailySpotResponse
+
+    /**
+     * `DELETE /api/reinvented/dots/:id/:dot` (CONTRACT 7c): the author takes one dot off their Moment; 204. Route
+     * `backend/routes/reinvented.js` (dots).
+     */
+    @DELETE("api/reinvented/dots/{id}/{dot}")
+    suspend fun removeDot(
+        @Path("id") id: String,
+        @Path("dot") dot: String,
+    )
 }

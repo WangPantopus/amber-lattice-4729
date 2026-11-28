@@ -183,6 +183,8 @@ data class MomentDto(
     val mentions: List<MomentAuthorDto>? = null,
     /** "Pulse, reinvented" (CONTRACT 7b, 7g): its playable items, for a reader whose switch is on; else null. */
     val play: List<MomentPlayItemDto>? = null,
+    /** "Pulse, reinvented" (CONTRACT 7c): Illuminate's dots, for a reader whose switch is on; else null. */
+    val dots: List<MomentDotDto>? = null,
     /** "Pulse, reinvented" (CONTRACT 8e): the Retake it belongs to, for a reader whose switch is on; else null. */
     val retake: app.pantopus.android.data.api.models.reinvented.MomentRetakeStateDto? = null,
     /** "Pulse, reinvented" (CONTRACT 8h): the convergence it joined, for a reader whose switch is on; else null. */
@@ -417,6 +419,8 @@ data class CreateMomentBody(
     val mentions: List<String>? = null,
     /** The Studio's playable items (CONTRACT 7b, 7g: before and after so far); left out otherwise. */
     val play: List<MomentPlayItemDto>? = null,
+    /** The Studio's dots (CONTRACT 7c): up to eight; left out otherwise. */
+    val dots: List<MomentDotDto>? = null,
 )
 
 /**

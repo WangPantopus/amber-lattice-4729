@@ -76,6 +76,7 @@ struct ReinventedPulseSideBySide<Header: View, Content: View, Add: View>: View {
             VStack(spacing: Spacing.s0) {
                 if showsTimeRow {
                     ReinventedTimeRow(model: map)
+                    ReinventedAskBar(map: map) // phase 4: Ask the map
                         // Room to scroll the last time clear of the open Duo's clock corner, top right.
                         .safeAreaPadding(.trailing, Spacing.s16)
                         .padding(.top, Spacing.s2)
