@@ -194,9 +194,10 @@ class StudioPostViewModel
             // The camera's own shot, here, now (the Live mark's checks); an album pick says its own time instead.
             val takenHere = photo && state.shot != null && state.takenAt == null && fresh != null
             return mapOf(
-                "stamps" to stamps.map {
-                    mapOf("kind" to it.kind, "x" to it.x, "y" to it.y, "scale" to it.scale, "rotation" to it.rotation)
-                },
+                "stamps" to
+                    stamps.map {
+                        mapOf("kind" to it.kind, "x" to it.x, "y" to it.y, "scale" to it.scale, "rotation" to it.rotation)
+                    },
                 "elevation" to elevation?.let { mapOf("meters" to it.meters, "accuracy_m" to it.accuracyM, "speed_mps" to it.speedMps) },
                 "explore" to true.takeIf { draft.explore && kind.mayGoToExplore },
                 "taken_at" to state.takenAt?.takeIf { photo }?.toString(),

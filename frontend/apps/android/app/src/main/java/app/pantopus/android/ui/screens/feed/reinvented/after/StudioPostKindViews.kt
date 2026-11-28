@@ -291,7 +291,11 @@ private fun LostFoundDetails(
     Text("How to reach you", color = PantopusColors.studioPillSecondary, fontSize = 13.sp)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
         CONTACTS.forEach { (key, words) ->
-            KindChip(words, on = draft.contact == key, tag = "moments.studio.kind.contact.$key") { viewModel.edit { it.copy(contact = key) } }
+            KindChip(
+                words,
+                on = draft.contact == key,
+                tag = "moments.studio.kind.contact.$key",
+            ) { viewModel.edit { it.copy(contact = key) } }
         }
     }
     if (draft.contact == "phone") {
