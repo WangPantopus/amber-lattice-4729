@@ -475,11 +475,20 @@ export class CardTableEngine {
   quickSeal() {
     if (!this.sending || this.holdStart || !(this.send === 'ready' || this.send === 'in' || this.send === 'seal')) return;
     this.lastTouch = performance.now();
+    this.sealAll(!reducedMotion());
+  }
+
+  /**
+   * The seal-all step: the card in, the flap down and the seal pressed home in one go, into the same send. With Reduce
+   * Motion the main button does this; Quick seal (Wave 3.5) does it too, with `beat`: the press shows for QUICK_PRESS ms
+   * first, and the stamping after it is quicker (QUICK_* times, [data-quick] in CardTable.module.css).
+   */
+  private sealAll(beat = false) {
     const set = (key: SpringKey, x: number) => { this.v[key].x = x; this.v[key].t = x; this.v[key].v = 0; };
     set('lay', 0); set('pull', 0);
     this.step = 'back';
     this.render();
-    if (reducedMotion()) { this.sealNow(); return; }
+    if (!beat) { this.sealNow(); return; }
     this.quick = true;
     this.root.dataset.quick = '1';
     this.setSend('seal');
@@ -496,11 +505,7 @@ export class CardTableEngine {
   private sendPrimary() {
     const reduce = reducedMotion();
     if (reduce && (this.send === 'ready' || this.send === 'in' || this.send === 'seal')) {
-      const set = (key: SpringKey, x: number) => { this.v[key].x = x; this.v[key].t = x; this.v[key].v = 0; };
-      set('lay', 0); set('pull', 0);
-      this.step = 'back';
-      this.render();
-      this.sealNow();
+      this.sealAll();
       return;
     }
     if (this.send === 'ready') this.putIn();
