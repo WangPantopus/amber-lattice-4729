@@ -61,7 +61,7 @@ extension MomentsViewerModel {
     var playHolds: Bool {
         guard PulseReinventedFlags.shared.isOn, let moment else { return false }
         if MomentDotPrompt.shared.open?.momentId == moment.id || soundHolds { return true }
-        if playItemsHold { return true }
+        if playItemsHold || deckHolds { return true }
         return moment.kind == .photo && moment.layers.beforeAfter != nil
     }
 }

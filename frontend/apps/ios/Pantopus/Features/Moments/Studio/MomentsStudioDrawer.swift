@@ -141,6 +141,9 @@ struct MomentsStudioDrawer: View {
             if model.offersExplore {
                 MomentsStudioExploreRow(model: model)
             }
+            if model.showsDeckRow {
+                MomentsStudioDeckRow(model: model)
+            }
             if !asPost {
                 Text("How long")
                     .font(.system(size: 13, weight: .semibold))

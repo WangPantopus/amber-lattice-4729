@@ -100,6 +100,8 @@ public struct MomentCreateBody: Encodable, Sendable, Hashable {
     public var mentions: [String]?
     /// The Studio's dots on things in the photo (CONTRACT 7c); left out when there are none.
     public var dots: [MomentDotDTO]?
+    /// The Studio's step deck (CONTRACT 7g): this step, the deck's id and how many; left out otherwise.
+    public var deck: MomentDeckBody?
 
     private enum CodingKeys: String, CodingKey {
         case kind, hours, audience, caption, text, background, location, altitude, series, pin
@@ -107,7 +109,7 @@ public struct MomentCreateBody: Encodable, Sendable, Hashable {
         case takenHere = "taken_here"
         case showWeather = "show_weather"
         case postAs = "post_as"
-        case stamps, elevation, guess, explore, play, mentions, dots
+        case stamps, elevation, guess, explore, play, mentions, dots, deck
         case showArea = "show_area"
         case clientRequestId = "client_request_id"
         case placeKey = "place_key"
