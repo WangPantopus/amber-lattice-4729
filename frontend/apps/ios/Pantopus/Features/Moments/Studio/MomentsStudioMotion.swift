@@ -63,10 +63,14 @@ struct MomentsStudioMotionClip: Equatable {
 }
 
 extension MomentsComposerModel {
-    /// The clip of the Live Photo in the Studio, while its still is the picture (not a before-and-after).
+    /// The clip of the Live Photo in the Studio, while its still is the picture as picked: not a before-and-after, not
+    /// moved onto a canvas, drawn on, given a look, blurred or cut into, so the clip lines up with it and never shows
+    /// again what was blurred.
     var studioMotionClip: MomentsStudioMotionClip? {
-        guard case .photo = draft, studioPair == nil else { return nil }
-        return marking.studio?.motion
+        guard case .photo = draft, studioPair == nil, let tools = marking.studio, let clip = tools.motion else { return nil }
+        let untouched = marking.placement == nil && marking.marks.isEmpty && tools.look == .original
+            && tools.blur?.blurred == nil && tools.cutouts.isEmpty
+        return untouched ? clip : nil
     }
 
     /// "Motion on" for a Live Photo: its clip goes up with it.
