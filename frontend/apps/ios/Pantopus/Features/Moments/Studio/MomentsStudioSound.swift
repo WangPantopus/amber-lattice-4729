@@ -28,8 +28,11 @@ extension MomentsComposerModel {
     /// A voice recorded (or taken off): its words fill in; a voice replaces place sound.
     func setStudioVoice(_ recording: MomentsStudioRecording?) {
         if marking.studio == nil { marking.studio = MomentsStudioTools() }
+        let before = marking.studio?.voice
         marking.studio?.voice = recording
-        marking.studio?.voiceWords = recording?.words?.map(\.w).joined(separator: " ") ?? ""
+        // The same take with the wind cleaned (or put back) keeps the words already typed for it.
+        let sameTake = recording.map { new in before.map { new.original == $0.file || $0.original == new.file } ?? false } ?? false
+        if !sameTake { marking.studio?.voiceWords = recording?.words?.map(\.w).joined(separator: " ") ?? "" }
         if recording != nil { marking.studio?.place = nil }
     }
 
@@ -99,10 +102,14 @@ struct MomentsSoundSend {
     /// or a lost connection is tried once more; `403 PULSE_REINVENTED_OFF` reads the switch again at once (CONTRACT 7e).
     @MainActor
     func upload(momentId: String) async -> String? {
-        defer { try? FileManager.default.removeItem(at: recording.file) }
+        defer {
+            try? FileManager.default.removeItem(at: recording.file)
+            if let original = recording.original { try? FileManager.default.removeItem(at: original) }
+        }
         guard let data = try? Data(contentsOf: recording.file) else { return "It couldn't be read on your iPhone." }
         var fields = ["kind": kind, "duration_ms": String(recording.durationMs)]
         if let dot { fields["dot"] = dot }
+        if recording.cleaned { fields["cleaned"] = "true" }
         if let words, let json = try? JSONEncoder().encode(words) { fields["words"] = String(data: json, encoding: .utf8) }
         let file = MultipartFile(fieldName: "file", filename: "\(kind).m4a", mimeType: "audio/mp4", data: data)
         var failure = StudioPlayFailure(status: 0, code: nil, words: nil)
@@ -241,6 +248,13 @@ struct MomentsSoundRecordRow: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.s2) {
+            controls
+            if let kept, !mine { MomentsSoundWindChip(kept: kept, onChange: onChange) }
+        }
+    }
+
+    private var controls: some View {
         HStack(spacing: Spacing.s2) {
             if mine, recorder.recording {
                 chip("Stop · \(Self.time(recorder.elapsed)) / \(Self.time(kind.seconds))", icon: .square, on: true) {
@@ -293,5 +307,51 @@ struct MomentsSoundRecordRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("moments.studio.sound.\(kind.rawValue)")
+    }
+}
+
+/// "Clean the wind": a cleaned copy made on the phone, marked as cleaned; a second tap puts the original back.
+struct MomentsSoundWindChip: View {
+    let kept: MomentsStudioRecording
+    let onChange: (MomentsStudioRecording?) -> Void
+    @State private var cleaning = false
+
+    var body: some View {
+        Button {
+            Task { await toggle() }
+        } label: {
+            HStack(spacing: 6) {
+                if cleaning {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Icon(kept.cleaned ? .check : .wind, size: 15, strokeWidth: 2.2, color: Theme.Color.primaryTint)
+                }
+                Text(cleaning ? "Cleaning the wind…" : kept.cleaned ? "Wind cleaned · your sound says so" : "Clean the wind")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.Color.appText)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 34)
+            .background(Capsule().fill(Theme.Color.appSurfaceRaised))
+            .overlay(Capsule().stroke(Theme.Color.appBorder, lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(cleaning)
+        .accessibilityLabel(kept
+            .cleaned ? "Wind cleaned. Tap to put the sound back as it was." : "Clean the wind from this sound, on your iPhone")
+        .accessibilityIdentifier("moments.studio.sound.wind")
+    }
+
+    private func toggle() async {
+        if kept.cleaned, let original = kept.original {
+            try? FileManager.default.removeItem(at: kept.file)
+            return onChange(MomentsStudioRecording(file: original, durationMs: kept.durationMs, words: kept.words))
+        }
+        cleaning = true
+        defer { cleaning = false }
+        guard let made = await MomentsSoundCleaner.clean(kept.file) else { return }
+        let cleaned = MomentsStudioRecording(file: made, durationMs: kept.durationMs, words: kept.words, cleaned: true, original: kept.file)
+        onChange(cleaned)
     }
 }
