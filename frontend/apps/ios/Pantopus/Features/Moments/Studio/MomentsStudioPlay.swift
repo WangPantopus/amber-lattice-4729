@@ -19,6 +19,7 @@ extension MomentsComposerModel {
         return (marking.studio?.play ?? []).filter { item in
             switch item.kind {
             case .fog, .swatch: draft != .text
+            case .movingWords: offersLooks
             default: true
             }
         }
@@ -171,9 +172,16 @@ private struct MomentsStudioPlacedPlay: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("moments.studio.play.remove")
             }
-            MomentPlayCard(moment: nil, item: item, preview: true)
-                .frame(width: 250)
-                .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white, lineWidth: picked ? 2 : 0))
+            if item.kind == .movingWords {
+                // Moving words are drawn as readers will see them, moving.
+                MomentMovingWordsView(item: item)
+                    .padding(6)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white, lineWidth: picked ? 2 : 0))
+            } else {
+                MomentPlayCard(moment: nil, item: item, preview: true)
+                    .frame(width: 250)
+                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white, lineWidth: picked ? 2 : 0))
+            }
         }
         .scaleEffect(0.86)
         .position(

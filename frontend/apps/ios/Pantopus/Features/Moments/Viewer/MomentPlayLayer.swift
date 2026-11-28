@@ -122,7 +122,12 @@ struct MomentPlayOverlay: View {
                 ForEach(items.filter { $0.kind == .swatch }) { swatch in
                     MomentSwatchLayer(moment: moment, item: swatch, frame: frame)
                 }
-                ForEach(items.filter { ![.fog, .swatch, .beforeAfter, .unknown].contains($0.kind) }) { item in
+                // Moving words (CONTRACT 7k): drawn at their place, moving; never answered.
+                ForEach(items.filter { $0.kind == .movingWords }) { item in
+                    MomentMovingWordsView(item: item, unit: unit)
+                        .position(x: frame.minX + item.x * frame.width, y: frame.minY + item.y * frame.height)
+                }
+                ForEach(items.filter { ![.fog, .swatch, .beforeAfter, .movingWords, .unknown].contains($0.kind) }) { item in
                     MomentPlayCard(moment: moment, item: item)
                         .frame(width: 268)
                         .scaleEffect(CGFloat(item.scale) * unit)
@@ -180,7 +185,7 @@ struct MomentPlayCard: View {
                 case .guess: MomentGuessRevealCard(moment: moment, item: item)
                 case .countdown: MomentCountdownCard(item: item)
                 case .quote: MomentQuoteCard(item: item)
-                case .fog, .swatch, .beforeAfter, .unknown: EmptyView()
+                case .fog, .swatch, .beforeAfter, .movingWords, .unknown: EmptyView()
                 }
             } else {
                 MomentPlayPreview(item: item)
