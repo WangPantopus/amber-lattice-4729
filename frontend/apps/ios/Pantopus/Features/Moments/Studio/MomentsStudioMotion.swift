@@ -3,8 +3,9 @@
 //  Pantopus
 //
 //  "Pulse, reinvented" phase 5, piece C on the iPhone (CONTRACT 10b): a Live Photo picked in the Studio keeps its
-//  motion. Its clip is copied from Photos when the still is picked (`studioKeepMotion`, one line in today's
-//  `use(asset:)`), the Studio's rail shows the moving-photo mark with "Motion on" (on by default; never the word "Live",
+//  motion. The Studio finds the picked photo in Photos by its own time and copies its clip (`studioFindMotion`, run by
+//  the Studio composer whenever its picture changes), the Studio's rail shows the moving-photo mark with "Motion on" (on by default; never
+//  the word "Live",
 //  which means "taken here just now"), and once the Moment's photo is up the clip goes up beside it
 //  (`uploadStudioMotion`, one line in today's posting). Nothing happens unless the Studio is open and the switch is on;
 //  today's composer and Post sheet never see any of it, and after a switch-off today's sheet posts the still as today.
@@ -39,7 +40,7 @@ struct MomentsStudioMotionClip: Equatable {
             return nil
         }
         let size = ((try? FileManager.default.attributesOfItem(atPath: file.path))?[.size] as? Int) ?? 0
-        let seconds = (try? await AVURLAsset(url: file).load(.duration).seconds) ?? 0
+        let seconds = await (try? AVURLAsset(url: file).load(.duration).seconds) ?? 0
         guard size > 0, size <= largestBytes, seconds > 0, seconds <= longestSeconds + 0.05 else {
             try? FileManager.default.removeItem(at: file)
             return nil
@@ -78,8 +79,26 @@ extension MomentsComposerModel {
         studioMotionClip != nil && marking.studio?.keepsMotion != false
     }
 
-    /// A photo picked from the album (today's `use(asset:)`): a Live Photo's clip is copied for the Studio, in the
-    /// background; any other photo lets the last one's go.
+    /// What the Studio finds a Live Photo by: the picked photo's own time, which the album gives (the camera gives none),
+    /// while the Studio holds a photo and the switch is on.
+    var studioMotionKey: Date? {
+        guard marking.studio != nil, case .photo = draft, studioPair == nil, PulseReinventedFlags.shared.isOn else { return nil }
+        return takenAt
+    }
+
+    /// The picture changed: the Live Photo taken at that moment, if there's exactly one, gives its clip; else none.
+    func studioFindMotion() {
+        guard let taken = studioMotionKey else { return }
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "creationDate == %@", taken as NSDate)
+        options.fetchLimit = 2
+        let found = PHAsset.fetchAssets(with: .image, options: options)
+        guard found.count == 1, let asset = found.firstObject else { return }
+        studioKeepMotion(of: asset)
+    }
+
+    /// The photo picked: a Live Photo's clip is copied for the Studio, in the background; any other photo lets the last
+    /// one's go.
     func studioKeepMotion(of asset: PHAsset) {
         guard marking.studio != nil else { return }
         let id = asset.localIdentifier
