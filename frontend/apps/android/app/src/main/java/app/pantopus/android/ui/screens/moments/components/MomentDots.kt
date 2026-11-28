@@ -101,7 +101,6 @@ fun MomentDotMarker(
 /** A dot's size on the picture, dp. */
 const val DOT = 30
 
-
 /** The viewer's dots over [moment]'s picture; [mine]: the reader is its author (Remove is offered). */
 @Composable
 fun MomentDotsLayer(
