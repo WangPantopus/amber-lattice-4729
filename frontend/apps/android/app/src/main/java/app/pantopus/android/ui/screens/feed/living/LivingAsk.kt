@@ -383,7 +383,12 @@ internal fun LivingSearchBox(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
             ) {
-                PantopusIconImage(icon = PantopusIcon.Search, contentDescription = null, size = 15.dp, tint = PantopusColors.appTextSecondary)
+                PantopusIconImage(
+                    icon = PantopusIcon.Search,
+                    contentDescription = null,
+                    size = 15.dp,
+                    tint = PantopusColors.appTextSecondary,
+                )
                 Box(Modifier.weight(1f)) {
                     if (text.isEmpty()) Text(look.hint, fontSize = 15.sp, color = PantopusColors.appTextSecondary)
                     inner()
@@ -400,7 +405,12 @@ internal fun LivingSearchBox(
                                     .semantics { contentDescription = look.clearWords }
                                     .testTag(look.clearTag),
                         ) {
-                            PantopusIconImage(icon = PantopusIcon.X, contentDescription = null, size = 15.dp, tint = PantopusColors.appTextSecondary)
+                            PantopusIconImage(
+                                icon = PantopusIcon.X,
+                                contentDescription = null,
+                                size = 15.dp,
+                                tint = PantopusColors.appTextSecondary,
+                            )
                         }
                 }
             }
