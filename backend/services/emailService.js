@@ -1700,6 +1700,68 @@ async function sendPersonaPaymentFailedEmail({
 }
 
 // ============================================================
+//  HOME CLAIM NOTICE EMAIL
+// ============================================================
+
+/**
+ * A notice to a claimant about their own home claim: a reviewer asked for more, a document is still missing, or
+ * the claim closed. Until 2026-11-27 these went only to the app's bell and push, so someone who never opened the
+ * app didn't hear. Plain words and one button; the address is the one the claimant entered.
+ *
+ * @param {Object} opts
+ * @param {string} opts.toEmail       the claimant's email address
+ * @param {string} opts.heading       the subject and the headline
+ * @param {string[]} opts.paragraphs  body text, in order
+ * @param {string} [opts.quote]       a reviewer's note, shown as a quotation after the first paragraph
+ * @param {string} opts.buttonLabel   e.g. "Open your claim"
+ * @param {string} opts.path          the web path the button opens, e.g. /app/homes
+ */
+async function sendClaimNoticeEmail({ toEmail, heading, paragraphs, quote = null, buttonLabel, path }) {
+  const url = `${String(APP_URL).replace(/\/+$/, '')}${path}`;
+  const para = (text) => `<p style="font-size:15px; line-height:1.6; color:#374151; margin:0 0 16px;">${escapeHtml(text)}</p>`;
+  const quoted = quote
+    ? `<p style="font-size:15px; line-height:1.6; color:#111827; margin:0 0 16px; padding:12px 16px; background:#f6f7f9; border-radius:10px;">${escapeHtml(quote)}</p>`
+    : '';
+  const [first, ...rest] = paragraphs;
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(heading)}</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f6f7f9; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#111827;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f6f7f9; padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px; background:#ffffff; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden;">
+          <tr>
+            <td style="padding:28px 32px 8px;">
+              <div style="font-size:18px; font-weight:700; color:#0284c7; letter-spacing:0.2px;">Pantopus</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 32px 28px;">
+              <h1 style="font-size:22px; font-weight:600; margin:0 0 16px; color:#111827;">${escapeHtml(heading)}</h1>
+              ${para(first)}
+              ${quoted}
+              ${rest.map(para).join('\n              ')}
+              <p style="margin:8px 0 0;">
+                <a href="${escapeHtml(url)}" style="display:inline-block; background:#0284c7; color:#ffffff; font-size:15px; font-weight:600; text-decoration:none; padding:12px 20px; border-radius:10px;">${escapeHtml(buttonLabel)}</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+  const text = [heading, '', first, ...(quote ? ['', quote] : []), ...rest.flatMap((line) => ['', line]), '', `${buttonLabel}: ${url}`].join('\n');
+  return sendEmail({ to: toEmail, subject: heading, html, text });
+}
+
+// ============================================================
 //  HELPERS
 // ============================================================
 
@@ -1740,6 +1802,7 @@ module.exports = {
   sendGuestSignupReleasedEmail,
   sendGuestReservationAddressEmail,
   sendDisplayNameMigrationEmail,
+  sendClaimNoticeEmail,
   buildDisplayNameMigrationEmailContent,
   // P2.10 / audience-profile §6.3 — audience-zone subscription emails.
   sendPersonaSubscriptionWelcomeEmail,

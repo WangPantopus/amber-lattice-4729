@@ -9,12 +9,18 @@
  *                    and one more after a week. Left alone: claims older than two weeks, co-owner invitations (the
  *                    invitation told them) and claims answering Request info (that notice already asked).
  *   remindReviewers  daily. One email to the review team when a document has waited more than a day for a reviewer.
+ *   closeUndocumented  hourly. A claim the person filed themself that has had no document for 30 days closes (the
+ *                    founder's decision, 2026-11-27), and the claimant is told; after Request info the 30 days count
+ *                    from the request. The database function decides and closes (close_home_claim_without_document,
+ *                    under the Home's claim lock); this only picks candidates and sends the notice.
  *
- * Neither changes a claim. A notice goes out once per claim and stage (its idempotency key), however often this runs.
+ * The reminders change no claim. A notice goes out once per claim and stage (its idempotency key), however often
+ * this runs, in the app and by email (services/homeClaimNotices.js).
  */
 const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
 const { isOpenForReview, waitingOn } = require('../services/homeClaimRoutingService');
+const { CLOSE_AFTER_DAYS } = require('../services/homeClaimNotices');
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -31,6 +37,10 @@ function reminderKey(claimId, stage) {
   return `claim-document-reminder:${claimId}:${stage}`;
 }
 
+function closedKey(claimId) {
+  return `claim-closed-no-document:${claimId}`;
+}
+
 /** Documents (never an identity check) on these claims: claim id → the times they came in. */
 async function documentTimes(claimIds) {
   const times = new Map();
@@ -43,18 +53,6 @@ async function documentTimes(claimIds) {
   if (error) throw error;
   for (const row of data || []) times.set(row.claim_id, [...(times.get(row.claim_id) || []), row.created_at]);
   return times;
-}
-
-function reminderText(claim, stage) {
-  const address = [claim.home?.address, claim.home?.address2].map(part => part?.trim()).filter(Boolean).join(' ');
-  const where = address || 'your home';
-  const proof = claim.claim_type === 'resident'
-    ? 'a document that shows you live there, like a utility bill or lease'
-    : 'a document that shows you own it, like a deed, closing statement or property tax bill';
-  return {
-    title: stage === 1 ? 'Add a document to verify your home' : 'Your home claim still needs a document',
-    body: `Your claim for ${where} can't be reviewed until it has ${proof}. Open your claim to add one.`,
-  };
 }
 
 async function remindClaimants(options = {}) {
@@ -95,17 +93,7 @@ async function remindClaimants(options = {}) {
     const key = reminderKey(claim.id, stage);
     if (alreadySent.has(key)) continue;
     if (dryRun) { sent++; continue; }
-    // The same notice Request info sends, so every app opens the claim's upload from it.
-    const notice = await require('../services/notificationService').createNotification({
-      userId: claim.claimant_user_id,
-      type: 'ownership_claim_needs_more_info',
-      ...reminderText(claim, stage),
-      icon: '📋',
-      link: `/homes/${claim.home_id}/waiting-room`,
-      metadata: { home_id: claim.home_id, claim_id: claim.id, claim_type: claim.claim_type },
-      idempotencyKey: key,
-    });
-    if (notice) sent++;
+    if (await require('../services/homeClaimNotices').remindAboutDocument({ claim, stage, key })) sent++;
   }
 
   const summary = { scanned: open.length, due: due.length, sent, dry_run: dryRun };
@@ -150,4 +138,54 @@ async function remindReviewers(options = {}) {
   return summary;
 }
 
-module.exports = { remindClaimants, remindReviewers };
+async function closeUndocumented(options = {}) {
+  const { dryRun = false, now = Date.now(), limit = 200 } = options;
+  const cutoff = now - CLOSE_AFTER_DAYS * DAY;
+  const { data, error } = await supabaseAdmin
+    .from('HomeOwnershipClaim')
+    .select(`${CLAIM_FIELDS}, home:home_id ( address, address2 )`)
+    .in('state', [...UNANSWERED_STATES, 'needs_more_info'])
+    .not('method', 'in', '("invite","vouch")')
+    .lte('created_at', new Date(cutoff).toISOString())
+    .order('created_at', { ascending: true })
+    .limit(limit);
+  if (error) {
+    logger.error('[claimDocumentReminders] Failed to read claims', { error: error.message });
+    throw error;
+  }
+
+  // After Request info the 30 days count from the request. The database function tests all of this again.
+  const open = (data || []).filter(claim => claim.claimant_user_id && isOpenForReview(claim, now)
+    && !(claim.state === 'needs_more_info' && claim.reviewed_at && Date.parse(claim.reviewed_at) > cutoff));
+  const documents = await documentTimes(open.map(claim => claim.id));
+  const due = open.filter(claim => !documents.has(claim.id));
+
+  let closed = 0;
+  let told = 0;
+  for (const claim of due) {
+    if (dryRun) { closed++; continue; }
+    const { data: result, error: closeError } = await supabaseAdmin.rpc('close_home_claim_without_document', {
+      p_claim_id: claim.id, p_min_age_days: CLOSE_AFTER_DAYS,
+    });
+    if (closeError || result?.ok !== true) {
+      // Nothing was closed. A missing function (the migration not applied yet) fails every call, so stop here.
+      logger.warn('[claimDocumentReminders] Could not close a claim', { claimId: claim.id, errorCode: closeError?.code || result?.code });
+      if (closeError) break;
+      continue;
+    }
+    if (result.closed !== true) continue;
+    if (!result.replayed) closed++;
+    // A repeated close still tells the claimant if the notice didn't go out the first time (its key keeps it to one).
+    try {
+      if (await require('../services/homeClaimNotices').tellClaimClosed({ claim, key: closedKey(claim.id) })) told++;
+    } catch (noticeError) {
+      logger.warn('[claimDocumentReminders] Close notice failed after commit', { claimId: claim.id, errorCode: noticeError?.code });
+    }
+  }
+
+  const summary = { scanned: open.length, due: due.length, closed, told, dry_run: dryRun };
+  if (due.length) logger.info('[claimDocumentReminders] Claims without a document closed', summary);
+  return summary;
+}
+
+module.exports = { remindClaimants, remindReviewers, closeUndocumented };

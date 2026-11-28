@@ -81,7 +81,8 @@ const VERIFICATION_SCREEN = {
   pending_postcard: ['Check your mailbox', 'A verification code has been mailed to this address. Enter the code to complete verification.'],
   provisional_bootstrap: ['Limited access', 'You have provisional access with limited features. Verify your address to unlock full home management.'],
   pending_approval: ['Waiting for approval', 'A household member needs to approve your request. Reopen this screen to check for updates.'],
-  pending_doc: ['Document under review', 'Your uploaded documents are waiting for a Pantopus reviewer.'],
+  // Shown when no claim is open (declined, withdrawn, or closed for having no document), so nothing is under review.
+  pending_doc: ['Verify with a document', "A Pantopus reviewer checks the document you upload, and you get a notification when it's decided. If you haven't uploaded one yet, add it below."],
   provisional: ['Provisional access', 'Verify your address to unlock full home management features.'],
   suspended_challenged: ['Access suspended', 'Your access has been challenged by a household member. Contact support if you believe this is an error.'],
   unverified: ['Verification required', 'Complete verification to access this home.'],
