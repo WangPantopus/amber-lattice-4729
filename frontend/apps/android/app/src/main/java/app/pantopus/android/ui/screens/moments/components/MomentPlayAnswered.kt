@@ -236,8 +236,11 @@ internal fun QuestionWriteDialog(
     prompt: String,
     onSend: suspend (String) -> Boolean,
     onDone: () -> Unit,
+    limit: Int = QUESTION_ANSWER_LETTERS,
+    first: String = "",
+    hint: String = "Your answer",
 ) {
-    var words by remember { mutableStateOf("") }
+    var words by remember { mutableStateOf(first) }
     var sending by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -258,7 +261,7 @@ internal fun QuestionWriteDialog(
             CardWords(prompt, bold = true)
             BasicTextField(
                 value = words,
-                onValueChange = { words = it.take(QUESTION_ANSWER_LETTERS) },
+                onValueChange = { words = it.take(limit) },
                 textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
                 cursorBrush = SolidColor(Color.White),
                 modifier =
@@ -269,7 +272,7 @@ internal fun QuestionWriteDialog(
                         .background(PantopusColors.studioPillFill)
                         .padding(12.dp)
                         .focusRequester(focus)
-                        .semantics { contentDescription = "Your answer" }
+                        .semantics { contentDescription = hint }
                         .testTag("moments.play.question.text"),
             )
             if (failed) CardNote("Couldn't send it. Try again.")

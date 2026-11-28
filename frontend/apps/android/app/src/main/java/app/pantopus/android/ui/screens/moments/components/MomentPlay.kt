@@ -69,6 +69,9 @@ import kotlin.math.roundToInt
  * sends `play` only then, and the viewer draws this layer only then.
  */
 
+/** The most letters in a board note (CONTRACT 7b). */
+private const val BOARD_NOTE_LETTERS = 60
+
 /** The card's width on a 402 dp picture, scaled with the picture and the item's own size (as on iPhone). */
 private const val CARD_DP = 268f
 private const val BASE_WIDTH_DP = 402f
@@ -81,6 +84,11 @@ val MomentPlayItemDto.card: Boolean
             MomentPlayKinds.COUNTDOWN -> !title.isNullOrBlank() && endsAt != null
             MomentPlayKinds.SLIDER -> !question.isNullOrBlank() && !left.isNullOrBlank() && !right.isNullOrBlank()
             MomentPlayKinds.QUESTION -> !prompt.isNullOrBlank()
+            MomentPlayKinds.GUESS ->
+                !prompt.isNullOrBlank() && ((options?.size ?: 0) in 2..MomentPlayLimits.MOST_OPTIONS || range != null)
+            MomentPlayKinds.BOARD ->
+                !question.isNullOrBlank() && !xAxis?.left.isNullOrBlank() && !xAxis?.right.isNullOrBlank() &&
+                    !yAxis?.bottom.isNullOrBlank() && !yAxis?.top.isNullOrBlank()
             else -> false
         }
 
@@ -185,14 +193,25 @@ fun MomentPlayLayer(
         }
     }
     items.firstOrNull { it.id == writing }?.let { item ->
+        val board = item.kind == MomentPlayKinds.BOARD
         QuestionWriteDialog(
-            prompt = item.prompt.orEmpty(),
+            prompt = if (board) item.question.orEmpty() else item.prompt.orEmpty(),
             onSend = { words ->
-                val back = play.answer(moment.id, item.id, MomentPlayAnswerBody(text = words))
+                // A board's note goes with the reader's place on it; a question box's answer is its words.
+                val body =
+                    if (board) {
+                        MomentPlayAnswerBody(x = item.mine?.x, y = item.mine?.y, note = words)
+                    } else {
+                        MomentPlayAnswerBody(text = words)
+                    }
+                val back = play.answer(moment.id, item.id, body)
                 back?.let { answered = answered + (item.id to it) }
                 back != null
             },
             onDone = { writing = null },
+            limit = if (board) BOARD_NOTE_LETTERS else QUESTION_ANSWER_LETTERS,
+            first = if (board) item.mine?.note.orEmpty() else "",
+            hint = if (board) "Your note" else "Your answer",
         )
     }
     items.firstOrNull { it.id == reading }?.let { item ->
@@ -236,6 +255,11 @@ fun MomentPlayCard(
             MomentPlayKinds.COUNTDOWN -> CountdownCard(item)
             MomentPlayKinds.SLIDER -> SliderCard(item, onAnswer)
             MomentPlayKinds.QUESTION -> QuestionCard(item, authorName, onWrite, onAnswers)
+            MomentPlayKinds.GUESS -> GuessCard(item, onAnswer)
+            MomentPlayKinds.BOARD -> BoardCard(item, onAnswer, onWrite)
+        }
+        if (item.kind == MomentPlayKinds.BOARD && item.mine != null && item.open == true && onTakeBack != null) {
+            CardButton("Take my face off", "moments.play.takeBack", onTakeBack)
         }
         // A reader may take a slider's answer back while it is open (as a vote).
         if (item.kind == MomentPlayKinds.SLIDER && item.mine != null && item.open == true && onTakeBack != null) {
