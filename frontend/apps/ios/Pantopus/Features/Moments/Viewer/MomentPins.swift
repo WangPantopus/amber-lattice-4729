@@ -152,6 +152,25 @@ final class MomentPinsStore {
         }
     }
 
+    /// A voice bubble or a cutout (`MomentPinsVoiceCutout.swift`), sent as multipart.
+    func dropFile(_ file: MultipartFile, fields: [String: String], on momentId: String) async {
+        guard spot != nil, !busy else { return }
+        busy = true
+        note = nil
+        defer { busy = false }
+        do {
+            let (data, http) = try await MultipartUploader.shared.dropMomentPin(momentId: momentId, fields: fields, file: file)
+            guard (200..<300).contains(http.statusCode) else { throw MomentsFailure(status: http.statusCode, body: data) }
+            let created = try JSONDecoder().decode(MomentPinCreatedDTO.self, from: data)
+            pins[momentId, default: []].append(created.pin)
+            bumpReplies(momentId, by: 1)
+            closeCard()
+        } catch {
+            note = MomentRepliesWords.failure(error)
+            await PulseReinventedFlags.shared.recheck()
+        }
+    }
+
     func remove(_ pin: MomentPinDTO, on momentId: String) async {
         do {
             try await MomentsAPI.send(TogetherEndpoints.removeReply(momentId: momentId, replyId: pin.id))
