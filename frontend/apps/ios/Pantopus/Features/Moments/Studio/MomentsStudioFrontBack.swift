@@ -28,30 +28,55 @@ enum MomentsFrontBack {
         #endif
     }
 
-    /// One picture: `big` filling it, `small` inside it at the top left with rounded corners and a white edge.
-    static func compose(big: UIImage, small: UIImage) -> UIImage {
-        let size = big.size
+    /// The small picture on the screen: 118 by 157 points, 16 from the left and 60 under the top of the safe area.
+    static func smallFrame(safeTop: CGFloat) -> CGRect {
+        CGRect(x: 16, y: safeTop + 60, width: 118, height: 157)
+    }
+
+    /// The picture exactly as the screen showed it: `big` cut to the screen's shape (centred, as the preview fills
+    /// the screen), and `small` filling `inset` (in the screen's points) with rounded corners and a white edge. So the
+    /// viewer, which fills the screen the same way, shows all of it, the small picture included.
+    static func compose(big: UIImage, small: UIImage, screen: CGSize, inset: CGRect) -> UIImage {
+        let crop = fill(big.size, in: screen)
+        // The output keeps the big picture's own detail: as many pixels as the part of it that showed.
+        let points = CGSize(width: screen.width * crop.scale, height: screen.height * crop.scale)
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = big.scale
         format.opaque = true
-        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
-            big.draw(in: CGRect(origin: .zero, size: size))
-            let inset = insetFrame(in: size, small: small.size)
-            let edge = size.width * 0.008
-            let radius = inset.width * 0.12
+        return UIGraphicsImageRenderer(size: points, format: format).image { _ in
+            big.draw(in: CGRect(
+                x: -crop.offset.x,
+                y: -crop.offset.y,
+                width: big.size.width,
+                height: big.size.height
+            ))
+            let box = CGRect(
+                x: inset.minX * crop.scale,
+                y: inset.minY * crop.scale,
+                width: inset.width * crop.scale,
+                height: inset.height * crop.scale
+            )
+            let edge = 3 * crop.scale
+            let radius = 14 * crop.scale
             UIColor.white.setFill()
-            UIBezierPath(roundedRect: inset.insetBy(dx: -edge, dy: -edge), cornerRadius: radius + edge).fill()
-            UIBezierPath(roundedRect: inset, cornerRadius: radius).addClip()
-            small.draw(in: inset)
+            UIBezierPath(roundedRect: box.insetBy(dx: -edge / 2, dy: -edge / 2), cornerRadius: radius + edge / 2).fill()
+            UIBezierPath(roundedRect: box.insetBy(dx: edge / 2, dy: edge / 2), cornerRadius: radius - edge / 2).addClip()
+            let inner = fill(small.size, in: box.size)
+            small.draw(in: CGRect(
+                x: box.minX - inner.offset.x / inner.scale,
+                y: box.minY - inner.offset.y / inner.scale,
+                width: small.size.width / inner.scale,
+                height: small.size.height / inner.scale
+            ))
         }
     }
 
-    /// Where the small picture sits in a picture of `size`: 30% of its width, at the top left.
-    static func insetFrame(in size: CGSize, small: CGSize) -> CGRect {
-        let width = size.width * 0.3
-        let aspect = small.height / max(small.width, 1)
-        let margin = size.width * 0.045
-        return CGRect(x: margin, y: margin, width: width, height: width * aspect)
+    /// How `picture` fills `frame` centred (aspect fill): `scale` is the picture's points per frame point, `offset`
+    /// where the frame's corner falls in the picture.
+    static func fill(_ picture: CGSize, in frame: CGSize) -> (scale: CGFloat, offset: CGPoint) {
+        let scale = min(picture.width / max(frame.width, 1), picture.height / max(frame.height, 1))
+        let shown = CGSize(width: frame.width * scale, height: frame.height * scale)
+        return (scale, CGPoint(x: (picture.width - shown.width) / 2, y: (picture.height - shown.height) / 2))
     }
 }
 
@@ -224,7 +249,7 @@ private struct MomentsFrontBackGlyph: View {
 }
 
 /// Front and back together, full screen: the big picture, the small one at the top left (a tap on it swaps them),
-/// the shutter, and close. `done` gets the one picture, or nil when the person closes it.
+/// the shutter, and close. `done` gets the one picture, exactly as the screen showed it, or nil when the person closes it.
 struct MomentsFrontBackScreen: View {
     let done: (UIImage?) -> Void
     /// Made only on a phone that can run two cameras at once (never on a simulator).
@@ -236,62 +261,24 @@ struct MomentsFrontBackScreen: View {
     @State private var taking = false
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            Color.black.ignoresSafeArea()
-            big.ignoresSafeArea()
-            if ready == true || MomentsFrontBackStandIn.isOn {
-                small
-                    .padding(.top, 72)
-                    .padding(.leading, Spacing.s4)
+        GeometryReader { geo in
+            let inset = MomentsFrontBack.smallFrame(safeTop: geo.safeAreaInsets.top)
+            ZStack(alignment: .top) {
+                Color.black
+                // The big picture fills the screen centred, as the viewer will show the shot, and is never wider.
+                Color.clear
+                    .overlay { big }
+                    .clipped()
+                if ready == true || MomentsFrontBackStandIn.isOn {
+                    small.position(x: inset.midX, y: inset.midY)
+                }
+                controls(screen: geo.size, inset: inset)
+                    .padding(.top, geo.safeAreaInsets.top)
+                    .padding(.bottom, geo.safeAreaInsets.bottom)
             }
-            VStack(spacing: 0) {
-                HStack {
-                    Spacer()
-                    Button { done(nil) } label: {
-                        Icon(.x, size: 22, strokeWidth: 2.4, color: .white)
-                            .frame(width: 44, height: 44)
-                            .background(Circle().fill(Color.black.opacity(0.42)))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Close front and back")
-                    .accessibilityIdentifier("moments.studio.frontBack.close")
-                }
-                .padding(.horizontal, Spacing.s4)
-                .padding(.top, Spacing.s2)
-                Spacer(minLength: 0)
-                if ready == false, !MomentsFrontBackStandIn.isOn {
-                    Text("This phone can't use both cameras at once.")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, Spacing.s6)
-                        .accessibilityIdentifier("moments.studio.frontBack.unavailable")
-                    Spacer(minLength: 0)
-                }
-                Text(MomentsFrontBackStandIn.isOn ? "Stand-in pictures: this build has no camera." : "Front and back together")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.6), radius: 1.5, x: 0, y: 1)
-                    .padding(.bottom, Spacing.s4)
-                HStack {
-                    Color.clear.frame(width: 86, height: 1)
-                    Spacer(minLength: 0)
-                    shutter
-                    Spacer(minLength: 0)
-                    Button { swap() } label: {
-                        Icon(.switchCamera, size: 24, color: .white)
-                            .frame(width: 48, height: 48)
-                            .background(Circle().fill(Color.black.opacity(0.42)))
-                    }
-                    .buttonStyle(.plain)
-                    .frame(width: 86)
-                    .accessibilityLabel(frontBig ? "Show the back camera big" : "Show the front camera big")
-                    .accessibilityIdentifier("moments.studio.frontBack.swap")
-                }
-                .padding(.horizontal, Spacing.s1)
-                .padding(.bottom, 32)
-            }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
+        .ignoresSafeArea()
         .environment(\.colorScheme, .dark)
         .task {
             guard !MomentsFrontBackStandIn.isOn else { return }
@@ -308,14 +295,66 @@ struct MomentsFrontBackScreen: View {
         .accessibilityIdentifier("moments.studio.frontBack")
     }
 
+    private func controls(screen: CGSize, inset: CGRect) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Button { done(nil) } label: {
+                    Icon(.x, size: 22, strokeWidth: 2.4, color: .white)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Color.black.opacity(0.42)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close front and back")
+                .accessibilityIdentifier("moments.studio.frontBack.close")
+            }
+            .padding(.horizontal, Spacing.s4)
+            .padding(.top, Spacing.s2)
+            Spacer(minLength: 0)
+            if ready == false, !MomentsFrontBackStandIn.isOn {
+                Text("This phone can't use both cameras at once.")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Spacing.s6)
+                    .accessibilityIdentifier("moments.studio.frontBack.unavailable")
+                Spacer(minLength: 0)
+            }
+            Text(MomentsFrontBackStandIn.isOn ? "Stand-in pictures: this build has no camera." : "Front and back together")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.6), radius: 1.5, x: 0, y: 1)
+                .padding(.bottom, Spacing.s4)
+            HStack {
+                Color.clear.frame(width: 86, height: 1)
+                Spacer(minLength: 0)
+                shutter(screen: screen, inset: inset)
+                Spacer(minLength: 0)
+                Button { swap() } label: {
+                    Icon(.switchCamera, size: 24, color: .white)
+                        .frame(width: 48, height: 48)
+                        .background(Circle().fill(Color.black.opacity(0.42)))
+                }
+                .buttonStyle(.plain)
+                .frame(width: 86)
+                .accessibilityLabel(frontBig ? "Show the back camera big" : "Show the front camera big")
+                .accessibilityIdentifier("moments.studio.frontBack.swap")
+            }
+            .padding(.horizontal, Spacing.s1)
+            .padding(.bottom, 24)
+        }
+    }
+
     private var big: some View {
         picture(front: frontBig)
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(frontBig ? "Front camera" : "Back camera")
     }
 
     private var small: some View {
         Button { swap() } label: {
-            picture(front: !frontBig)
+            Color.clear
+                .overlay { picture(front: !frontBig) }
                 .frame(width: 118, height: 157)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white, lineWidth: 3))
@@ -339,8 +378,8 @@ struct MomentsFrontBackScreen: View {
         }
     }
 
-    private var shutter: some View {
-        Button { shoot() } label: {
+    private func shutter(screen: CGSize, inset: CGRect) -> some View {
+        Button { shoot(screen: screen, inset: inset) } label: {
             ZStack {
                 Circle().stroke(.white, lineWidth: 4).frame(width: 80, height: 80)
                 Circle().fill(.white).frame(width: 66, height: 66)
@@ -357,8 +396,8 @@ struct MomentsFrontBackScreen: View {
         withAnimation(.easeInOut(duration: 0.2)) { frontBig.toggle() }
     }
 
-    private func shoot() {
-        guard !taking else { return }
+    private func shoot(screen: CGSize, inset: CGRect) {
+        guard !taking, screen.width > 0, screen.height > 0 else { return }
         taking = true
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         Task {
@@ -369,7 +408,7 @@ struct MomentsFrontBackScreen: View {
             guard let pair else { return }
             let big = frontBig ? pair.front : pair.back
             let small = frontBig ? pair.back : pair.front
-            done(MomentsFrontBack.compose(big: big, small: small))
+            done(MomentsFrontBack.compose(big: big, small: small, screen: screen, inset: inset))
         }
     }
 }
@@ -392,7 +431,8 @@ private struct MomentsFrontBackPreview: UIViewRepresentable {
     final class Host: UIView {
         var preview: AVCaptureVideoPreviewLayer? {
             didSet {
-                oldValue?.removeFromSuperlayer()
+                // After a swap the other host may already hold the old layer: take it off only if it's still here.
+                if let oldValue, oldValue.superlayer === layer { oldValue.removeFromSuperlayer() }
                 if let preview { layer.addSublayer(preview) }
                 setNeedsLayout()
             }
@@ -405,57 +445,5 @@ private struct MomentsFrontBackPreview: UIViewRepresentable {
             preview?.frame = bounds
             CATransaction.commit()
         }
-    }
-}
-
-/// Simulator builds only: two drawn pictures in place of the cameras, so the mode's own code runs where there is no
-/// camera. Never in a build for a phone.
-enum MomentsFrontBackStandIn {
-    static var isOn: Bool {
-        #if targetEnvironment(simulator)
-        true
-        #else
-        false
-        #endif
-    }
-
-    @MainActor private static var made: [Bool: UIImage] = [:]
-
-    @MainActor
-    static func picture(front: Bool) -> UIImage {
-        if let image = made[front] { return image }
-        let size = CGSize(width: 900, height: 1200)
-        let format = UIGraphicsImageRendererFormat.default()
-        format.scale = 1
-        let image = UIGraphicsImageRenderer(size: size, format: format).image { context in
-            let colors = front
-                ? [UIColor(red: 0.98, green: 0.62, blue: 0.45, alpha: 1), UIColor(red: 0.62, green: 0.27, blue: 0.55, alpha: 1)]
-                : [UIColor(red: 0.36, green: 0.66, blue: 0.86, alpha: 1), UIColor(red: 0.16, green: 0.42, blue: 0.30, alpha: 1)]
-            let gradient = CGGradient(
-                colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                colors: colors.map(\.cgColor) as CFArray,
-                locations: [0, 1]
-            )
-            if let gradient {
-                context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
-            }
-            let words = front ? "Front camera\n(stand-in)" : "Back camera\n(stand-in)"
-            let style = NSMutableParagraphStyle()
-            style.alignment = .center
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 84, weight: .bold),
-                .foregroundColor: UIColor.white,
-                .paragraphStyle: style
-            ]
-            let text = NSAttributedString(string: words, attributes: attributes)
-            let box = text.boundingRect(
-                with: CGSize(width: size.width - 80, height: size.height),
-                options: .usesLineFragmentOrigin,
-                context: nil
-            )
-            text.draw(in: CGRect(x: 40, y: (size.height - box.height) / 2, width: size.width - 80, height: box.height))
-        }
-        made[front] = image
-        return image
     }
 }
