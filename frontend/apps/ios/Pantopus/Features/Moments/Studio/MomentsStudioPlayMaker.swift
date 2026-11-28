@@ -271,7 +271,7 @@ struct MomentsStudioPlayMaker: View {
         let words = movingText.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !words.isEmpty else { return nil }
         var item = MomentPlayItem(id: model.playId(.movingWords), kind: .movingWords)
-        item.text = String(words.prefix(MomentsMovingWords.longest))
+        item.text = MomentsMovingWords.cut(words)
         item.lettering = movingLettering
         item.motion = movingMotion
         item.color = movingColor

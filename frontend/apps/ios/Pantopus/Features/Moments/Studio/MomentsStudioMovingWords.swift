@@ -28,6 +28,19 @@ enum MomentsMovingWords {
     /// White, warm yellow, black and sky.
     static let colors = ["#FFFFFF", "#FDE68A", "#111827", "#38BDF8"]
 
+    /// At most `longest` units as the server and the web count them (UTF-16), never cutting a letter in two: sixty
+    /// letters with emoji in them are more than sixty units, and the server refuses those.
+    static func cut(_ words: String) -> String {
+        var units = 0
+        var kept = ""
+        for letter in words {
+            units += letter.utf16.count
+            if units > longest { break }
+            kept.append(letter)
+        }
+        return kept
+    }
+
     static func face(_ id: String?) -> MomentMarks.Typeface {
         letterings.first { $0.id == id }?.face ?? .standard
     }
@@ -116,8 +129,8 @@ struct MomentsStudioMovingWordsForm: View {
                 .textFieldStyle(.roundedBorder)
                 .onChange(of: words) { _, next in
                     let line = next.replacingOccurrences(of: "\n", with: " ")
-                    if line.count > MomentsMovingWords.longest || line != next {
-                        words = String(line.prefix(MomentsMovingWords.longest))
+                    if line.utf16.count > MomentsMovingWords.longest || line != next {
+                        words = MomentsMovingWords.cut(line)
                     }
                 }
                 .accessibilityIdentifier("moments.studio.play.movingWords.text")
