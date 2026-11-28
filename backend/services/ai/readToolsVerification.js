@@ -186,7 +186,7 @@ function postcardForModel(status, zone) {
 const quietly = (promise, what, ctx) => promise.catch((err) => {
   // Not found is an answer (nothing of that kind at this home); anything else couldn't be read.
   if (err?.statusCode === 404 || err?.code === 'RESIDENCY_PROGRESS_NOT_FOUND') return null;
-  logger.warn('assistant verification read failed', { what, userId: ctx.userId, error: err?.message, code: err?.code });
+  logger.warn('assistant verification read failed', { what, userId: ctx.userId, error: err?.message, errorCode: err?.code });
   return { unreadable: true };
 });
 

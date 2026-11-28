@@ -127,7 +127,7 @@ module.exports = function chatMediaUpload({ validateFileMime }) {
       }, 10 * 60 * 1000).unref();
       multipart(req, res, (error) => error ? fail(req, res, error) : next());
     } catch (error) {
-      logger.warn('Chat temporary upload setup failed', { code: error.code });
+      logger.warn('Chat temporary upload setup failed', { errorCode: error.code });
       fail(req, res, uploadError('Attachments are temporarily unavailable. Please retry.', 503, 'CHAT_UPLOAD_UNAVAILABLE'));
     }
   }

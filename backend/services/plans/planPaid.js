@@ -561,7 +561,7 @@ async function refund(plan, request, { reason, actorMode = 'policy', actorId = n
     if (owed) await clearOwed(payment.id, key);
     return back;
   } catch (err) {
-    logger.warn('plans.paid.refund_failed', { planId: plan.post_id, requestId: request.id, reason, error: err.message, code: err.code });
+    logger.warn('plans.paid.refund_failed', { planId: plan.post_id, requestId: request.id, reason, error: err.message, errorCode: err.code });
     await markOwed(payment.id, { key, request_id: request.id, post_id: plan.post_id, reason, actor_mode: actorMode, actor_id: actorId, amount })
       .catch((markErr) => logger.error('plans.paid.refund_owed_unsaved', { paymentId: payment.id, requestId: request.id, error: markErr.message }));
     return 0;
@@ -683,7 +683,7 @@ async function groupRefund(plan, request, { notify = true } = {}) {
     }
     return back;
   } catch (err) {
-    logger.warn('plans.paid.group_refund_failed', { planId: plan.post_id, requestId: request.id, error: err.message, code: err.code });
+    logger.warn('plans.paid.group_refund_failed', { planId: plan.post_id, requestId: request.id, error: err.message, errorCode: err.code });
     return 0;
   }
 }

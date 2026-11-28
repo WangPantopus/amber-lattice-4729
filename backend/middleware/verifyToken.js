@@ -264,7 +264,7 @@ const verifyToken = async (req, res, next) => {
     return userWriteLimits ? userWriteLimits(req, res, checkCsrf) : checkCsrf();
   } catch (err) {
     if (err.authBusy) {
-      logger.warn('auth.policy_unavailable', { code: err.code });
+      logger.warn('auth.policy_unavailable', { errorCode: err.code });
       return res.status(503).json({ error: 'Could not verify this session right now. Please try again.', code: 'AUTH_UNAVAILABLE' });
     }
     logger.error('Token verification error:', err);

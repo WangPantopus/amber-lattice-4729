@@ -77,7 +77,7 @@ function drain() {
       delivered.set(key, { version: Math.max(version, appliedVersion || 0, seen?.version || 0), inserted: insert || seen?.inserted });
       while (delivered.size > 5000) delivered.delete(delivered.keys().next().value);
     }).catch((error) => {
-      logger.warn('chat_realtime_delivery_failed', { code: error.code });
+      logger.warn('chat_realtime_delivery_failed', { errorCode: error.code });
       invalidate(item.change.r);
     }).finally(() => {
       running.delete(key);
@@ -113,7 +113,7 @@ function drainTyping() {
     Promise.resolve().then(() => {
       if (Date.now() - change.at <= 5000) return typingHandler(io, change);
     }).catch((error) => {
-      logger.warn('chat_typing_unavailable', { code: error.code });
+      logger.warn('chat_typing_unavailable', { errorCode: error.code });
     }).finally(() => {
       typingRunning.delete(key);
       drainTyping();

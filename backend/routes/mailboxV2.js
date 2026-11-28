@@ -584,7 +584,7 @@ router.get('/search', verifyToken, async (req, res) => {
       const result = await query.range(nextOffset, nextOffset + limit - 1);
       if (result.error?.code === 'PGRST103') break;
       if (result.error) {
-        logger.error('Mail search failed', { code: result.error.code });
+        logger.error('Mail search failed', { errorCode: result.error.code });
         return res.status(500).json({ error: "Couldn't search your mail. Try again in a moment.", code: 'MAIL_UNAVAILABLE' });
       }
       const found = result.data || [];

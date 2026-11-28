@@ -121,7 +121,7 @@ async function alertReview({ homeId, caseId }) {
 /** A vote just ended (home_removal_vote_decide's answer, or a review's): log it and tell who needs to know. */
 async function announce(data, { reviewed = false } = {}) {
   logger.info('home_removal_vote.ended', { home_id: data.home_id, vote_id: data.vote_id, outcome: data.outcome,
-    code: data.code || null, reviewed });
+    errorCode: data.code || null, reviewed });
   if (data.outcome === 'review') await alertReview({ homeId: data.home_id, caseId: data.review_case_id });
   await tellEnded({ homeId: data.home_id, voteId: data.vote_id, targetId: data.target_user_id, outcome: data.outcome,
     occupancyId: data.occupancy_id, completedAt: data.completed_at, reviewed });
@@ -192,7 +192,7 @@ async function settleDue() {
       const data = await rpc('settle_home_removal_vote', { p_home_id: due.home_id, p_vote_id: due.vote_id });
       if (data.outcome) { settled++; await announce(data); }
     } catch (err) {
-      logger.warn('Household vote not settled', { vote_id: due.vote_id, code: err.code });
+      logger.warn('Household vote not settled', { vote_id: due.vote_id, errorCode: err.code });
     }
   }
   return { due: votes.length, settled };

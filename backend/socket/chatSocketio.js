@@ -175,7 +175,7 @@ async function readConnectedSession(socket) {
     socket.policyRegistryRow = Boolean(session);
     return socket.connected;
   } catch (err) {
-    logger.warn('Socket security state unavailable', { code: err.code || 'AUTH_UNAVAILABLE' });
+    logger.warn('Socket security state unavailable', { errorCode: err.code || 'AUTH_UNAVAILABLE' });
     // No live data while policy is unreadable. A transport close lets existing
     // clients retry the handshake without treating an outage as account loss.
     // Timers and signals call this unawaited, and app.js exits on a rejection.

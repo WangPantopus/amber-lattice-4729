@@ -293,7 +293,7 @@ async function flush() {
         add(staff.userId, ['chats']);
       }
     } catch (error) {
-      logger.warn('chat_business_inbox_recipients_unavailable', { code: error.code });
+      logger.warn('chat_business_inbox_recipients_unavailable', { errorCode: error.code });
     }
   }
 
@@ -315,7 +315,7 @@ async function flush() {
         }
       }
     } catch (error) {
-      logger.warn('chat_preference_recipients_unavailable', { code: error.code });
+      logger.warn('chat_preference_recipients_unavailable', { errorCode: error.code });
     }
   }
   const at = new Date().toISOString();

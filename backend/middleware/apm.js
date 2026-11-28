@@ -113,6 +113,7 @@ function apmMiddleware(req, res, next) {
     // whether this process was held up meanwhile (loop_lag_max_ms).
     if (durationMs > SLOW_THRESHOLD_MS) {
       logger.warn('Slow request detected', {
+        requestId: req.requestId,
         route: routeKey,
         duration_ms: Math.round(durationMs),
         status: res.statusCode,

@@ -224,6 +224,10 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// Attach X-Request-Id before webhooks, request logging, and APM so every log line correlates.
+const requestIdMiddleware = require('./middleware/requestId');
+app.use(requestIdMiddleware);
+
 // Stripe webhooks must use raw body for signature verification.
 // Mount BEFORE JSON/urlencoded parsers and before 404/error handlers.
 app.use(
@@ -312,7 +316,7 @@ app.use((req, res, next) => {
   const path = req.path.replace(BEARER_CODE_PATH, '$1/:code').replace(PROFILE_LINK_KEY_PATH, '$1/:key');
   logger.info(`${req.method} ${path}`, NO_CALLER_ID_PATH.test(req.path)
     ? {}
-    : { ip: req.ip, userAgent: req.get('user-agent'), client: clientBuild(req) });
+    : { requestId: req.requestId, ip: req.ip, userAgent: req.get('user-agent'), client: clientBuild(req) });
   next();
 });
 
@@ -412,10 +416,6 @@ app.get('/api/health/metrics', (req, res) => {
   });
 });
 
-// ============ REQUEST ID ============
-const requestIdMiddleware = require('./middleware/requestId');
-app.use('/api', requestIdMiddleware);
-
 // ============ GLOBAL RATE LIMITING (write endpoints) ============
 // These run before authentication, so they cap per client IP; verifyToken applies the per-person
 // half once the user is verified (see middleware/rateLimiter.js).
@@ -509,7 +509,9 @@ app.use('/api/sports', require('./routes/sports'));  // Sports topic lane (activ
 app.use('/api/files', fileRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/payments', payRoutes);
-app.use('/api/debug', debugRoutes);
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api/debug', debugRoutes);
+}
 app.use('/api/geo', geoRoutes);
 // Wedge Phase 1 — the density-gated Neighborhood door's meter.
 app.use('/api/neighborhood', require('./routes/neighborhood'));
@@ -624,9 +626,9 @@ app.use((err, req, res, next) => {
   else if (/^File type not allowed/.test(err.message || '')) status = 415;
 
   if (status >= 500) {
-    logger.error('Unhandled error', { error: err.message, stack: err.stack, path: req.path, method: req.method });
+    logger.error('Unhandled error', { requestId: req.requestId, error: err.message, stack: err.stack, path: req.path, method: req.method });
   } else {
-    logger.warn('Request rejected', { error: safeMessage, status, path: req.path, method: req.method });
+    logger.warn('Request rejected', { requestId: req.requestId, error: safeMessage, status, path: req.path, method: req.method });
   }
 
   if (res.headersSent) {

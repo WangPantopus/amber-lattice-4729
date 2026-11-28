@@ -674,8 +674,7 @@ function receiveFiles(req, res, next) {
   });
 }
 
-/** POST /:id/media — the photo or video of the caller's own Moment; the picture check runs, then it goes live. */
-router.post('/:id/media', uploadLimiter, receiveFiles, async (req, res) => {
+async function authorizeMomentMediaUpload(req, res, next) {
   try {
     const id = momentId(req);
     const row = await store.ownMoment(id, req.user.id);
@@ -683,6 +682,20 @@ router.post('/:id/media', uploadLimiter, receiveFiles, async (req, res) => {
     if (store.momentState(row) === 'ended') throw store.fail(410, 'MOMENT_ENDED', 'This Moment has ended.');
     const kind = store.meta(row).kind;
     if (kind === 'text') throw store.fail(400, 'MOMENT_INVALID', 'A text card has no file.');
+    req._momentUploadRow = row;
+    req._momentUploadId = id;
+    return next();
+  } catch (error) {
+    return sendError(res, error, 'media');
+  }
+}
+
+/** POST /:id/media — the photo or video of the caller's own Moment; the picture check runs, then it goes live. */
+router.post('/:id/media', uploadLimiter, authorizeMomentMediaUpload, receiveFiles, async (req, res) => {
+  try {
+    const id = req._momentUploadId;
+    const row = req._momentUploadRow;
+    const kind = store.meta(row).kind;
 
     const sentSha = req.files?.file?.[0] ? media.sha256(req.files.file[0].buffer) : null;
     const existing = store.meta(row).media;

@@ -51,7 +51,7 @@ function getPool() {
     statement_timeout: 600,
     query_timeout: 800,
   });
-  pool.on('error', (error) => logger.warn('directDb: idle connection failed', { error: error.message, code: error.code }));
+  pool.on('error', (error) => logger.warn('directDb: idle connection failed', { error: error.message, errorCode: error.code }));
   return pool;
 }
 
@@ -158,7 +158,7 @@ function fellBack(name, error) {
   const entry = statsFor(name);
   entry.fellBack += 1;
   if (loudly(entry)) {
-    logger.warn('directDb: read failed; the Data API answered', { read: name, error: error.message, code: error.code, fell_back: entry.fellBack });
+    logger.warn('directDb: read failed; the Data API answered', { read: name, error: error.message, errorCode: error.code, fell_back: entry.fellBack });
   }
 }
 
@@ -167,7 +167,7 @@ function compared(name, { error, differs = [], directMs, apiMs }) {
   const entry = statsFor(name);
   if (error) {
     entry.failed += 1;
-    if (loudly(entry)) logger.warn('directDb shadow: read failed', { read: name, error: error.message, code: error.code, failed: entry.failed });
+    if (loudly(entry)) logger.warn('directDb shadow: read failed', { read: name, error: error.message, errorCode: error.code, failed: entry.failed });
     return;
   }
   entry.compared += 1;

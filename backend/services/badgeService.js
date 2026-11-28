@@ -115,7 +115,7 @@ function drain() {
       for (const socketId of getUserSocketIds(userId)) _io.to(socketId).emit('badge:update', counts);
       entry.failures = 0;
     }).catch((error) => {
-      logger.warn('Badge update unavailable', { code: error.code });
+      logger.warn('Badge update unavailable', { errorCode: error.code });
       entry.failures += 1;
       if (entry.failures <= 3 && getUserSocketIds(userId).length) {
         entry.dirty = true;

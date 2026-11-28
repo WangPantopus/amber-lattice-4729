@@ -1241,7 +1241,7 @@ router.get('/vault/search', async (req, res, next) => {
 
     const { data: found, count, error: searchError } = await query;
     if (searchError) {
-      logger.error('Vault search failed', { code: searchError.code });
+      logger.error('Vault search failed', { errorCode: searchError.code });
       return res.status(500).json({ error: "Couldn't search your mail. Try again in a moment.", code: 'MAIL_UNAVAILABLE' });
     }
     // Each sender as neighbors see them now (their Local Profile). A text search matched the name stored when the

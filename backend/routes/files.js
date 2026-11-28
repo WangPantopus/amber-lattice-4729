@@ -1,18 +1,53 @@
 const express = require('express');
 const router = express.Router();
-const multer = require('multer');
 const crypto = require('crypto');
 const path = require('path');
+const rateLimit = require('express-rate-limit');
 const supabaseAdmin = require('../config/supabaseAdmin');
 const verifyToken = require('../middleware/verifyToken');
 const validate = require('../middleware/validate');
 const Joi = require('joi');
 const logger = require('../utils/logger');
+const { clientIpKey } = require('../utils/clientIpKey');
 const { checkHomePermission } = require('../utils/homePermissions');
 const s3 = require('../services/s3Service');
 const businessVerificationStorage = require('../services/businessVerificationStorage');
 // Photos are stored without their metadata (location, camera, time taken), or refused.
 const { removeUploadedMediaMetadata } = require('../services/photoMetadata');
+const { createDiskUpload, readFileBuffer, fileUploadBody, hashUploadedFile } = require('../services/diskUploadStorage');
+const { validateFileMime } = require('./upload');
+
+const filesUploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  keyGenerator: (req) => req.user?.id || clientIpKey(req),
+  message: { error: 'Too many file uploads. Please try again shortly.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+async function validateUploadedFileMime(req, res, next) {
+  if (!req.file) return next();
+  try {
+    const result = await validateFileMime(req.file);
+    if (!result.valid) {
+      logger.warn('MIME type mismatch rejected on /api/files', {
+        originalname: req.file.originalname,
+        declared: result.declared,
+        detected: result.detected,
+      });
+      return res.status(400).json({
+        error: result.detected
+          ? `File "${req.file.originalname}" content does not match its declared type (declared: ${result.declared}, detected: ${result.detected})`
+          : `File "${req.file.originalname}" isn't a valid image, video or audio file.`,
+      });
+    }
+    return next();
+  } catch (err) {
+    logger.error('File MIME validation error on /api/files', { error: err.message });
+    return res.status(500).json({ error: 'File validation failed' });
+  }
+}
 
 // Try to load sharp for image processing
 let sharp;
@@ -100,9 +135,7 @@ const standaloneUploadSchema = Joi.object({
   visibility: Joi.string().valid('public', 'private').default('private'),
 });
 
-// ============ MULTER CONFIGURATION ============
-
-const storage = multer.memoryStorage();
+// ============ MULTER CONFIGURATION (DISK-BACKED STREAMING) ============
 
 const fileFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
@@ -124,13 +157,16 @@ const fileFilter = (req, file, cb) => {
   cb(null, true);
 };
 
-const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
+const upload = createDiskUpload({
+  fileFilter,
+  maxBytesForFile: (_req, file) => {
+    const category = getFileCategory(file.mimetype);
+    return category ? FILE_TYPES[category]?.maxSize : 25 * 1024 * 1024;
+  },
   limits: { fieldNameSize: 100, fieldNestingDepth: 3, fieldArrayIndexLimit: 32,
-    fileSize: 100 * 1024 * 1024, // 100MB max
+    fileSize: 100 * 1024 * 1024, // 100MB max (videos; per-category limit enforced while streaming)
     files: 10, fields: 32, parts: 42, fieldSize: 32768
-  }
+  },
 });
 
 // ============ HELPER FUNCTIONS ============
@@ -266,7 +302,7 @@ const deleteFromSupabase = async (bucketName, filePath) => {
  * POST /api/files/profile-picture
  * Upload user profile picture
  */
-router.post('/profile-picture', verifyToken, upload.single('file'), removeUploadedMediaMetadata, async (req, res) => {
+router.post('/profile-picture', verifyToken, filesUploadLimiter, upload.single('file'), validateUploadedFileMime, removeUploadedMediaMetadata, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
@@ -294,7 +330,7 @@ router.post('/profile-picture', verifyToken, upload.single('file'), removeUpload
     const filePath = `${folderPath}/${filename}`;
     
     // Process image
-    const { processed, thumbnails, metadata } = await processImage(file.buffer, filename);
+    const { processed, thumbnails, metadata } = await processImage(await readFileBuffer(file), filename);
     
     // Upload main image
     await uploadToSupabase(processed, filePath, 'public', file.mimetype);
@@ -377,7 +413,7 @@ router.post('/profile-picture', verifyToken, upload.single('file'), removeUpload
  * POST /api/files/portfolio
  * Upload portfolio/skills showcase file
  */
-router.post('/portfolio', verifyToken, upload.single('file'), validate(uploadPortfolioSchema), removeUploadedMediaMetadata, async (req, res) => {
+router.post('/portfolio', verifyToken, filesUploadLimiter, upload.single('file'), validate(uploadPortfolioSchema), validateUploadedFileMime, removeUploadedMediaMetadata, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
@@ -392,8 +428,9 @@ router.post('/portfolio', verifyToken, upload.single('file'), validate(uploadPor
     const fileId = requestId ? crypto.createHash('sha256')
       .update(`pantopus:portfolio:v1:${userId.toLowerCase()}:${requestId.toLowerCase()}`)
       .digest('hex').slice(0, 32) : null;
+    const fileSha = fileId ? (await hashUploadedFile(file, crypto.createHash('sha256'))).digest('hex') : null;
     const fingerprint = fileId ? crypto.createHash('sha256').update(JSON.stringify({
-      sha256: crypto.createHash('sha256').update(file.buffer).digest('hex'),
+      sha256: fileSha,
       filename: file.originalname, mimeType: file.mimetype,
       category: category || null, title: title || null, description: description || null,
       tags: tags || [], displayOrder: displayOrder || 0,
@@ -436,13 +473,13 @@ router.post('/portfolio', verifyToken, upload.single('file'), validate(uploadPor
       : s3.generateS3Key(folder, file.originalname.replace(ext, extension), userId);
     const uploadedKeys = [];
 
-    let processedBuffer = file.buffer;
+    let processedBuffer = null;
     let imageMetadata = null;
     let thumbnailUrls = {};
 
     // Process if image
     if (fileCategory === 'IMAGE') {
-      const { processed, thumbnails, metadata } = await processImage(file.buffer, file.originalname);
+      const { processed, thumbnails, metadata } = await processImage(await readFileBuffer(file), file.originalname);
       processedBuffer = processed;
       imageMetadata = metadata;
 
@@ -475,11 +512,18 @@ router.post('/portfolio', verifyToken, upload.single('file'), validate(uploadPor
       fileType = 'certification';
     }
 
-    // Upload to S3
+    // Upload to S3 (stream videos from disk; pass Buffer for images/documents)
+    const uploadPayload = processedBuffer
+      ? { body: processedBuffer, contentLength: processedBuffer.length }
+      : fileCategory === 'VIDEO'
+        ? fileUploadBody(file)
+        : { body: await readFileBuffer(file), contentLength: file.size };
     const { url: fileUrl, key: s3Key } = await s3.uploadToS3(
-      processedBuffer,
+      uploadPayload.body,
       objectKey('portfolio', ext),
-      file.mimetype
+      file.mimetype,
+      undefined,
+      { contentLength: uploadPayload.contentLength, abortSignal: req._uploadAbortSignal },
     );
     uploadedKeys.push(s3Key);
 
@@ -493,7 +537,7 @@ router.post('/portfolio', verifyToken, upload.single('file'), validate(uploadPor
         original_filename: file.originalname,
         file_path: s3Key,
         file_url: fileUrl,
-        file_size: processedBuffer.length,
+        file_size: uploadPayload.contentLength,
         mime_type: file.mimetype,
         file_extension: ext,
         file_type: fileType,
@@ -630,7 +674,24 @@ router.get('/portfolio/:userId', async (req, res) => {
  * POST /api/files/home/:homeId
  * Upload file to home profile
  */
-router.post('/home/:homeId', verifyToken, upload.single('file'), validate(uploadHomeFileSchema), removeUploadedMediaMetadata, async (req, res) => {
+async function authorizeHomeFileUpload(req, res, next) {
+  try {
+    const fileUploadAccess = await checkHomePermission(req.params.homeId, req.user.id, 'docs.upload');
+    if (fileUploadAccess.readFailed) {
+      return res.status(503).json({ error: 'Could not check home access. Try again.' });
+    }
+    if (!fileUploadAccess.hasAccess) {
+      return res.status(403).json({ error: 'You do not have access to this home' });
+    }
+    req._homeFileAccess = fileUploadAccess;
+    return next();
+  } catch (err) {
+    logger.error('Home file authz error', { error: err.message });
+    return res.status(503).json({ error: 'Could not check home access. Try again.' });
+  }
+}
+
+router.post('/home/:homeId', verifyToken, filesUploadLimiter, authorizeHomeFileUpload, upload.single('file'), validate(uploadHomeFileSchema), validateUploadedFileMime, removeUploadedMediaMetadata, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
@@ -641,13 +702,7 @@ router.post('/home/:homeId', verifyToken, upload.single('file'), validate(upload
     const userId = req.user.id;
     const file = req.file;
     
-    const fileUploadAccess = await checkHomePermission(homeId, userId, 'docs.upload');
-    if (fileUploadAccess.readFailed) {
-      return res.status(503).json({ error: 'Could not check home access. Try again.' });
-    }
-    if (!fileUploadAccess.hasAccess) {
-      return res.status(403).json({ error: 'You do not have access to this home' });
-    }
+    const fileUploadAccess = req._homeFileAccess;
     const isOwner = fileUploadAccess.isOwner;
 
     // Only owner can upload to home profile
@@ -672,12 +727,12 @@ router.post('/home/:homeId', verifyToken, upload.single('file'), validate(upload
     const folderPath = `homes/${homeId}/${visibility}`;
     const filePath = `${folderPath}/${filename}`;
     
-    let processedBuffer = file.buffer;
+    let processedBuffer = null;
     let imageMetadata = null;
     let thumbnailUrls = {};
     
     if (fileCategory === 'IMAGE') {
-      const { processed, thumbnails, metadata } = await processImage(file.buffer, filename);
+      const { processed, thumbnails, metadata } = await processImage(await readFileBuffer(file), filename);
       processedBuffer = processed;
       imageMetadata = metadata;
       
@@ -696,7 +751,7 @@ router.post('/home/:homeId', verifyToken, upload.single('file'), validate(upload
     }
     
     const bucketName = visibility === 'public' ? 'public' : 'private';
-    await uploadToSupabase(processedBuffer, filePath, bucketName, file.mimetype);
+    await uploadToSupabase(processedBuffer || await readFileBuffer(file), filePath, bucketName, file.mimetype);
     
     let fileUrl;
     if (bucketName === 'private') {
@@ -714,7 +769,7 @@ router.post('/home/:homeId', verifyToken, upload.single('file'), validate(upload
         original_filename: file.originalname,
         file_path: filePath,
         file_url: fileUrl,
-        file_size: processedBuffer.length,
+        file_size: processedBuffer ? processedBuffer.length : file.size,
         mime_type: file.mimetype,
         file_extension: ext,
         file_type: fileType,
@@ -856,7 +911,7 @@ router.get('/home/:homeId', verifyToken, async (req, res) => {
  * Generic file upload — used for voice postscripts and other standalone uploads.
  * Returns { message, file: { id, url } }
  */
-router.post('/upload', verifyToken, upload.single('file'), removeUploadedMediaMetadata, async (req, res) => {
+router.post('/upload', verifyToken, filesUploadLimiter, upload.single('file'), validateUploadedFileMime, removeUploadedMediaMetadata, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
@@ -895,16 +950,26 @@ router.post('/upload', verifyToken, upload.single('file'), removeUploadedMediaMe
     // Verification documents (licenses, EIN letters, utility bills) go to private storage with no
     // public URL; admins review them through short-lived links.
     const verificationDoc = purpose === 'business_verification';
-    const { url: fileUrl, key: s3Key, metadata } = verificationDoc
-      ? await businessVerificationStorage.store(userId, file)
-      : await s3.uploadToS3(
-        file.buffer,
+    let fileUrl;
+    let s3Key;
+    let metadata;
+    if (verificationDoc) {
+      ({ url: fileUrl, key: s3Key, metadata } = await businessVerificationStorage.store(userId, file));
+    } else {
+      const uploadBody = fileCategory === 'VIDEO'
+        ? fileUploadBody(file)
+        : { body: await readFileBuffer(file), contentLength: file.size };
+      ({ url: fileUrl, key: s3Key } = await s3.uploadToS3(
+        uploadBody.body,
         // A voice postscript goes into a letter, which may go out as a business: its key names no uploader.
         purpose === 'voice_postscript'
           ? s3.generateOpaqueS3Key(folder, file.originalname)
           : s3.generateS3Key(folder, file.originalname, userId),
-        file.mimetype
-      );
+        file.mimetype,
+        undefined,
+        { contentLength: uploadBody.contentLength, abortSignal: req._uploadAbortSignal },
+      ));
+    }
 
     const { data: savedFile, error: dbError } = await supabaseAdmin
       .from('File')

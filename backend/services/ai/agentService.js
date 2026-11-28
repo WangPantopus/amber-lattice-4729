@@ -406,7 +406,7 @@ async function updateConversation(conversationId, { messages, messageCount, titl
       missingColumn
         ? 'AIConversation.messages is missing; is the migration applied?'
         : 'AIConversation.messages could not be saved',
-      { conversationId, code: error.code, error: error.message },
+      { conversationId, errorCode: error.code, error: error.message },
     );
     delete update.messages;
     ({ error } = await save(update));
@@ -1952,7 +1952,7 @@ async function getConversationMessages(userId, conversationId, { cards = [] } = 
     .maybeSingle();
   if (error) {
     // Most likely the messages column (migration ai_conversation_messages) isn't applied yet.
-    logger.warn('getConversationMessages error', { userId, conversationId, code: error.code, error: error.message });
+    logger.warn('getConversationMessages error', { userId, conversationId, errorCode: error.code, error: error.message });
     const { data: row } = await supabaseAdmin.from('AIConversation').select('id, title')
       .eq('id', conversationId).eq('user_id', userId).maybeSingle();
     return row ? { conversationId: row.id, title: row.title, messages: [] } : null;

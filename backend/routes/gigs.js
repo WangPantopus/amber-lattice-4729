@@ -1826,7 +1826,7 @@ router.get('/my-bids', verifyToken, async (req, res) => {
         message: bidsErr.message,
         details: bidsErr.details,
         hint: bidsErr.hint,
-        code: bidsErr.code,
+        errorCode: bidsErr.code,
       });
       return res.status(500).json({ error: 'Failed to fetch your bids' });
     }
@@ -1848,7 +1848,7 @@ router.get('/my-bids', verifyToken, async (req, res) => {
           message: gigsErr.message,
           details: gigsErr.details,
           hint: gigsErr.hint,
-          code: gigsErr.code,
+          errorCode: gigsErr.code,
         });
         // Still return bids even if gig fetch fails
         gigsById = {};
@@ -4315,7 +4315,7 @@ router.get('/:gigId/bids', verifyToken, async (req, res) => {
         message: bidsError.message,
         details: bidsError.details,
         hint: bidsError.hint,
-        code: bidsError.code,
+        errorCode: bidsError.code,
         gigId,
       });
       return res.status(500).json({ error: 'Failed to fetch bids' });
@@ -4649,7 +4649,7 @@ router.post('/:gigId/bids/:bidId/accept', verifyToken, async (req, res) => {
         logger.error('Accept bid: failed to get_or_create_gig_chat RPC, trying fallback', {
           message: rpcErr.message,
           details: rpcErr.details,
-          code: rpcErr.code,
+          errorCode: rpcErr.code,
         });
 
         const { data: existingRoom } = await supabaseAdmin
