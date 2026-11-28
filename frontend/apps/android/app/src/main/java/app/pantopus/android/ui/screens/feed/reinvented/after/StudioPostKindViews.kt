@@ -126,8 +126,8 @@ fun StudioPostKindRow(
 fun rememberStudioPost(
     state: MomentsComposeUiState,
     onDone: () -> Unit,
-    momentPost: () -> Unit,
     viewModel: StudioPostViewModel = hiltViewModel(),
+    momentPost: () -> Unit,
 ): () -> Unit {
     val now by rememberUpdatedState(state)
     val done by rememberUpdatedState(onDone)
