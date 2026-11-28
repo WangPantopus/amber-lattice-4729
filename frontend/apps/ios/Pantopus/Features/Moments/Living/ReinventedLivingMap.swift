@@ -129,6 +129,9 @@ final class ReinventedLivingMap {
     /// Live beams in the box, on the Live map only.
     private(set) var beams: [ReinventedBeamDTO] = []
 
+    /// The box and the time of the map's last answer (Ask the map asks for that box).
+    @ObservationIgnored private(set) var region: MKCoordinateRegion?
+    @ObservationIgnored private(set) var time = "live"
     @ObservationIgnored private var beamsRead: Task<Void, Never>?
     @ObservationIgnored private var beamsMissing = false
     @ObservationIgnored private let api: APIClient
@@ -144,6 +147,9 @@ final class ReinventedLivingMap {
 
     /// The map's answer came (a 200): what it says about floating, the sun over the box's middle, and the beams.
     func answered(_ data: Data, region: MKCoordinateRegion, time: String) {
+        if time != self.time { ReinventedMapAsk.shared.clear() }
+        self.region = region
+        self.time = time
         let light = try? JSONDecoder().decode(ReinventedMapLight.self, from: data)
         let on = (light?.heightsOn ?? false) && (light?.floatOn ?? false)
         if floats != on { floats = on }
