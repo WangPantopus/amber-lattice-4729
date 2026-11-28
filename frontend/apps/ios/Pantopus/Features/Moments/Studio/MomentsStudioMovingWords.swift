@@ -26,7 +26,7 @@ enum MomentsMovingWords {
     ]
 
     /// White, warm yellow, black and sky.
-    static let colors = ["#FFFFFF", "#FDE68A", "#111827", "#38BDF8"]
+    static let colors = MomentMovingWordsColor.all
 
     /// At most `longest` units as the server and the web count them (UTF-16), never cutting a letter in two: sixty
     /// letters with emoji in them are more than sixty units, and the server refuses those.
@@ -57,7 +57,7 @@ struct MomentMovingWordsView: View {
     }
 
     private var color: Color {
-        MomentSwatchLayer.color(item.color ?? "#FFFFFF") ?? .white
+        MomentSwatchLayer.color(item.color ?? MomentMovingWordsColor.white) ?? .white
     }
 
     private var font: Font {
@@ -118,7 +118,7 @@ struct MomentMovingWordsView: View {
                     .offset(y: phase == 0 ? 0 : -7 * unit * max(0, sin(phase * 3 - Double(index) * 0.45)))
             }
         }
-        .shadow(color: .black.opacity(color == .white || item.color == "#FFFFFF" ? 0.45 : 0.2), radius: 2, y: 1)
+        .shadow(color: .black.opacity(color == .white || item.color == MomentMovingWordsColor.white ? 0.45 : 0.2), radius: 2, y: 1)
         .fixedSize()
     }
 }

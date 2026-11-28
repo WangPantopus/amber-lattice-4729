@@ -437,3 +437,10 @@ public struct MomentLayersDTO: Sendable, Hashable {
         play.first { $0.kind == .beforeAfter }
     }
 }
+
+/// CONTRACT 7k: the four colours moving words are sent in (`#RRGGBB`, upper-case, as the server stores them): white,
+/// warm yellow, black and sky. Values on the wire, kept here beside the item rather than in feature code.
+public enum MomentMovingWordsColor {
+    public static let white = "#FFFFFF"
+    public static let all = [white, "#FDE68A", "#111827", "#38BDF8"]
+}

@@ -45,7 +45,7 @@ struct MomentsStudioPlayMaker: View {
     @State private var movingText = ""
     @State private var movingLettering = "classic"
     @State private var movingMotion = "drift"
-    @State private var movingColor = "#FFFFFF"
+    @State private var movingColor = MomentMovingWordsColor.white
     @State private var lifted: [String] = []
 
     private var kinds: [Making] {
