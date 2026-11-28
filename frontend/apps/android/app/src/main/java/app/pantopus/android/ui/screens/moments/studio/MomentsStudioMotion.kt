@@ -148,7 +148,12 @@ internal fun StudioMotionRow(
 ) {
     DisposableEffect(motion) {
         StudioMotion.owner = motion
-        onDispose { if (StudioMotion.owner === motion) StudioMotion.owner = null }
+        onDispose {
+            if (StudioMotion.owner === motion) StudioMotion.owner = null
+            // The Studio gave way (back to today's Post screen, or to the camera): its clip goes, and no motion request
+            // ever leaves from today's screens. A posted one was handed over already.
+            motion.clear()
+        }
     }
     val photo = (state.media as? MomentMediaFile.Photo)?.file?.takeIf { state.studioPair == null }
     val asTaken = state.marks.isEmpty && state.placement == null

@@ -17,6 +17,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,28 +61,7 @@ fun MomentMotionLayer(moment: MomentDto) {
     val context = LocalContext.current
     val still = remember { Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }
     var playing by remember(moment.id) { mutableStateOf(false) }
-    val player =
-        remember(moment.id) {
-            ExoPlayer.Builder(context).build().apply {
-                repeatMode = Player.REPEAT_MODE_OFF
-                volume = 0f
-                setMediaItem(MediaItem.fromUri(url))
-                prepare()
-            }
-        }
-    DisposableEffect(player) {
-        val ended =
-            object : Player.Listener {
-                override fun onPlaybackStateChanged(state: Int) {
-                    if (state == Player.STATE_ENDED) playing = false
-                }
-            }
-        player.addListener(ended)
-        onDispose {
-            player.removeListener(ended)
-            player.release()
-        }
-    }
+    val player = rememberMotionPlayer(moment.id, url) { playing = false }
     // Once, silently, as it opens.
     LaunchedEffect(player) {
         if (!still) {
@@ -94,31 +74,7 @@ fun MomentMotionLayer(moment: MomentDto) {
             Modifier
                 .fillMaxSize()
                 .testTag("moments.viewer.motion")
-                .pointerInput(player) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                        val lifted =
-                            withTimeoutOrNull(HOLD_MS) {
-                                do {
-                                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                                } while (event.changes.any { it.pressed })
-                                true
-                            }
-                        if (lifted == null) {
-                            // Held: again, with its sound, while the finger stays.
-                            player.volume = 1f
-                            player.seekTo(0)
-                            player.play()
-                            playing = true
-                            do {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                            } while (event.changes.any { it.pressed })
-                            player.pause()
-                            player.volume = 0f
-                            playing = false
-                        }
-                    }
-                },
+                .replaysWhileHeld(player) { playing = it },
     ) {
         AndroidView(
             factory = { viewContext ->
@@ -132,18 +88,87 @@ fun MomentMotionLayer(moment: MomentDto) {
             update = { view -> view.player = player },
             modifier = Modifier.fillMaxSize().graphicsLayer { alpha = if (playing) 1f else 0f },
         )
-        Box(
-            modifier =
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 120.dp, end = 14.dp)
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(PantopusColors.momentCaptionPill)
-                    .semantics { contentDescription = "A moving photo. Press and hold to play it with its sound." },
-            contentAlignment = Alignment.Center,
-        ) {
-            PantopusIconImage(icon = PantopusIcon.CircleDot, contentDescription = null, size = 16.dp, tint = Color.White)
+        MotionMark(Modifier.align(Alignment.TopEnd).padding(top = 120.dp, end = 14.dp))
+    }
+}
+
+/** The clip's own player, silent and ready, let go with the Moment; [onEnded] when it has played through. */
+@OptIn(UnstableApi::class)
+@Composable
+private fun rememberMotionPlayer(
+    momentId: String,
+    url: String,
+    onEnded: () -> Unit,
+): ExoPlayer {
+    val context = LocalContext.current
+    val player =
+        remember(momentId) {
+            ExoPlayer.Builder(context).build().apply {
+                repeatMode = Player.REPEAT_MODE_OFF
+                volume = 0f
+                setMediaItem(MediaItem.fromUri(url))
+                prepare()
+            }
         }
+    val ended by rememberUpdatedState(onEnded)
+    DisposableEffect(player) {
+        val listener =
+            object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == Player.STATE_ENDED) ended()
+                }
+            }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+    return player
+}
+
+/** A finger held on the picture plays the clip again with its sound until it lifts; it only listens, never takes a touch. */
+private fun Modifier.replaysWhileHeld(
+    player: ExoPlayer,
+    onPlaying: (Boolean) -> Unit,
+): Modifier =
+    pointerInput(player) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val lifted =
+                withTimeoutOrNull(HOLD_MS) {
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                    } while (event.changes.any { it.pressed })
+                    true
+                }
+            if (lifted == null) {
+                player.volume = 1f
+                player.seekTo(0)
+                player.play()
+                onPlaying(true)
+                do {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                } while (event.changes.any { it.pressed })
+                player.pause()
+                player.volume = 0f
+                onPlaying(false)
+            }
+        }
+    }
+
+/** The small moving-photo mark (never the word "Live"). */
+@Composable
+private fun MotionMark(modifier: Modifier) {
+    Box(
+        modifier =
+            modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(PantopusColors.momentCaptionPill)
+                .semantics { contentDescription = "A moving photo. Press and hold to play it with its sound." },
+        contentAlignment = Alignment.Center,
+    ) {
+        PantopusIconImage(icon = PantopusIcon.CircleDot, contentDescription = null, size = 16.dp, tint = Color.White)
     }
 }

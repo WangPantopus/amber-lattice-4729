@@ -98,17 +98,20 @@ object MomentMotionPhoto {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(clip.path)
-            if (retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO) != "yes") return null
-            val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: return null
-            if (duration <= 0 || duration > LONGEST_MS + ROUNDING_MS) return null
+            val video = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO) == "yes"
+            val duration =
+                retriever
+                    .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    ?.toLongOrNull()
+                    ?.takeIf { video && it > 0 && it <= LONGEST_MS + ROUNDING_MS }
+                    ?: return null
             val frames =
                 listOf(0L, duration / 2).mapNotNull { at ->
                     retriever.getFrameAtTime(at * US_PER_MS, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.let { frame ->
                         frameFile(context, frame)
                     }
                 }
-            if (frames.isEmpty()) return null
-            return MomentMotionClip(clip, duration, frames)
+            return frames.takeIf { it.isNotEmpty() }?.let { MomentMotionClip(clip, duration, it) }
         } finally {
             retriever.release()
         }
