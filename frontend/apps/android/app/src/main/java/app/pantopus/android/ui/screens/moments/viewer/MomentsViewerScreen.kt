@@ -797,7 +797,7 @@ fun MomentsViewerScreen(
                     if (studio) MomentGuessPill(shown, mine, onOpen = { guessing = true }, Modifier.padding(start = 58.dp, top = 6.dp))
                     if (studio) MomentKeepThis(shown, mine, Modifier.padding(start = 58.dp, top = 6.dp, end = 12.dp))
                     if (studio) MomentPlanOffer(shown, mine, onClose = { close() }, Modifier.padding(start = 58.dp, top = 6.dp))
-                    if (studio) MomentRepliesChip(shown, mine, Modifier.padding(start = 58.dp, top = 6.dp))
+                    if (studio) MomentRepliesChip(shown, mine, Modifier.padding(start = 58.dp, top = 6.dp), onClose = { close() })
                 }
             }
             // How high it was made, down the right edge (`MomentsViewerHeights.kt`). It takes no touch, and gives way

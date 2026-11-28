@@ -40,6 +40,7 @@ import app.pantopus.android.ui.screens.compose.placepicker.PostPlaceTag
 import app.pantopus.android.ui.screens.compose.pulse.MediaLocationAccess
 import app.pantopus.android.ui.screens.compose.pulse.PickedPlace
 import app.pantopus.android.ui.screens.compose.pulse.readPickedPlace
+import app.pantopus.android.ui.screens.feed.reinvented.after.TogetherCreate
 import app.pantopus.android.ui.screens.feed.reinvented.after.sentExplore
 import app.pantopus.android.ui.screens.moments.MomentsRoutes
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
@@ -1317,7 +1318,7 @@ class MomentsComposeViewModel
             if (videos != null && videos.size > 1 && media is MomentMediaFile.Video) {
                 return publishParts(body, media, videos, pinned, retried)
             }
-            return when (val result = repository.create(body)) {
+            return when (val result = TogetherCreate.create(body, current) ?: repository.create(body)) {
                 is NetworkResult.Success -> {
                     val moment = result.data
                     val video = videos?.firstOrNull()

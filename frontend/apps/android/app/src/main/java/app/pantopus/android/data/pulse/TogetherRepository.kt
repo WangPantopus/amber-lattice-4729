@@ -8,6 +8,7 @@ import app.pantopus.android.data.api.models.reinvented.MomentRepliesShownBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyDto
 import app.pantopus.android.data.api.models.reinvented.MomentReplyReportBody
+import app.pantopus.android.data.api.models.reinvented.RetakeDto
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.safeApiCall
 import app.pantopus.android.data.api.services.TogetherApi
@@ -15,7 +16,10 @@ import app.pantopus.android.data.moments.serverCode
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Replies people can see on a Moment (CONTRACT 8a). A 403 `PULSE_REINVENTED_OFF` turns the switch off at once. */
+/**
+ * Phase 3 on a Moment (CONTRACT 8): replies, pins, Retakes, and the Studio's create. A 403 `PULSE_REINVENTED_OFF` turns
+ * the switch off at once.
+ */
 @Singleton
 class TogetherRepository
     @Inject
@@ -59,6 +63,12 @@ class TogetherRepository
             y: Double,
             signal: String,
         ): NetworkResult<MomentPinDto> = guarded { api.dropReaction(momentId, MomentPinReactionBody(x = x, y = y, signal = signal)).pin }
+
+        /** CONTRACT 8e: a Retake, by its start's id or any frame's. */
+        suspend fun retake(id: String): NetworkResult<RetakeDto> = guarded { api.retake(id).retake }
+
+        /** CONTRACT 8: a Moment made in the Studio with phase 3's keys ([TogetherCreate]). */
+        suspend fun createMoment(body: Map<String, Any?>): NetworkResult<MomentDto> = guarded { api.createMoment(body).moment }
 
         private suspend fun <T> guarded(call: suspend () -> T): NetworkResult<T> {
             val answer = safeApiCall { call() }

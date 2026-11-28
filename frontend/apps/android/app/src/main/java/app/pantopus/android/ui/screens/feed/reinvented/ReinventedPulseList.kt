@@ -348,7 +348,8 @@ private fun KeptCard(
         verticalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
         Text(
-            text = "Kept · stays",
+            // A Retake's row (CONTRACT 8e) says so; it opens the whole Retake.
+            text = moment.retake?.tag ?: "Kept · stays",
             fontSize = 12.5.sp,
             fontWeight = FontWeight.Bold,
             color = PantopusColors.primary600,
