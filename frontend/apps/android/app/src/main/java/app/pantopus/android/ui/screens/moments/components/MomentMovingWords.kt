@@ -195,6 +195,7 @@ private fun letterRows(
     val rows = mutableListOf<MutableList<Int>>(mutableListOf())
     var width = 0
     var at = 0
+
     fun breakRow() {
         rows.add(mutableListOf())
         width = 0
