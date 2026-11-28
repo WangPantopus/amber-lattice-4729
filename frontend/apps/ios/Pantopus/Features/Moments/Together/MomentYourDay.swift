@@ -140,6 +140,8 @@ final class YourDayModel {
     }
 
     /// Posts the chosen photos, oldest first, each its own Moment through today's posting, under the chosen audience.
+    /// A photo today's posting refuses is left on the card with the words why, and the rest still post; a refusal
+    /// because the switch went off puts the card away at once.
     func share() async {
         let chosen = chosen
         guard !chosen.isEmpty, phase == .ready, let account = MomentsComposerModel.account else { return }
@@ -148,23 +150,33 @@ final class YourDayModel {
         let date = Self.dateKey(day)
         let id = UUID().uuidString.lowercased()
         var posted = 0
+        var refused: [String] = []
         phase = .posting(done: 0, total: chosen.count)
         for photo in chosen {
             if let failure = await Self.post(photo, audience: audience, date: date, id: id) {
-                note = failure
-                break
+                await PulseReinventedFlags.shared.recheck()
+                guard PulseReinventedFlags.shared.isOn else {
+                    phase = .hidden
+                    return
+                }
+                refused.append(failure)
+                if let index = photos.firstIndex(where: { $0.id == photo.id }) { photos[index].chosen = false }
+            } else {
+                posted += 1
+                photos.removeAll { $0.id == photo.id }
             }
-            posted += 1
-            photos.removeAll { $0.id == photo.id }
-            phase = .posting(done: posted, total: chosen.count)
+            phase = .posting(done: posted + refused.count, total: chosen.count)
         }
-        if posted == chosen.count {
+        if refused.isEmpty {
             defaults.set(date, forKey: Self.decidedKey(account))
             phase = .posted(count: posted, audience: audience)
-        } else {
-            // What wasn't posted stays on the card to try again.
-            phase = photos.isEmpty ? .hidden : .ready
+            return
         }
+        // What wasn't posted stays on the card (left out), with the words why.
+        let lead = refused.count == 1 ? "1 photo couldn't be shared" : "\(refused.count) photos couldn't be shared"
+        let done = posted > 0 ? " The other \(posted == 1 ? "one was" : "\(posted) were") shared." : ""
+        note = "\(lead): \(refused[0])\(done)"
+        phase = photos.isEmpty ? .hidden : .ready
     }
 
     /// One photo through today's composer, without its sheet: pinned where the file says it was taken, `your_day`
@@ -175,6 +187,8 @@ final class YourDayModel {
         await model.use(asset: photo.asset)
         guard model.draft != nil else { return model.error ?? "Couldn't open that photo." }
         model.audience = audience
+        // Under the person's own name only: a made-up name chosen earlier in the Studio never carries into "Your day".
+        model.postsUnderMadeUpName = false
         let together = TogetherStudio.shared
         together.context = .yourDay(date: date, id: id)
         together.claim(model)
