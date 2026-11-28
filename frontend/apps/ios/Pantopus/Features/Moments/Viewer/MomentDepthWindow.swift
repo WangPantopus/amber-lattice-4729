@@ -103,7 +103,8 @@ final class MomentDepthTilt {
         let mean = report.meanMs
         let slowest = report.p95Ms
         MomentDepthMeter.log.info("depth frames: \(report.frames) in \(report.seconds) s, mean \(mean) ms")
-        MomentDepthMeter.log.info("depth frames: slowest 5% \(slowest) ms, late \(late)%")
+        MomentDepthMeter.log
+            .info("depth frames: slowest 5% \(slowest) ms, late \(late)%, screen frame \(report.expectedMs) ms, warm-up \(report.warmUp)")
         guard report.tooSlow else { return }
         MomentDepthMeter.log.info("depth windows: too slow here, flat for the rest of this run")
         tooSlow = true
@@ -129,10 +130,14 @@ final class MomentDepthMeter: NSObject {
         let p95Ms: Double
         /// The share of frames that came more than half a frame late.
         let lateShare: Double
+        /// The screen's own frame (16.7 ms at 60 Hz, 8.3 at 120).
+        let expectedMs: Double
+        /// The first report also holds the viewer opening and the subject being lifted: it is told, never judged.
+        let warmUp: Bool
 
-        /// Slower than about 45 frames a second on average, or a quarter of the frames late.
+        /// Under about three quarters of the screen's own frame rate on average, or a quarter of the frames late.
         var tooSlow: Bool {
-            frames >= 30 && (meanMs > 22 || lateShare > 0.25)
+            !warmUp && frames >= 30 && (meanMs > expectedMs * 1.35 || lateShare > 0.25)
         }
     }
 
@@ -142,6 +147,7 @@ final class MomentDepthMeter: NSObject {
     private var last: CFTimeInterval?
     private var gaps: [Double] = []
     private var expected: Double = 1.0 / 60
+    private var reports = 0
     private let onReport: (Report) -> Void
 
     init(onReport: @escaping (Report) -> Void) {
@@ -171,8 +177,11 @@ final class MomentDepthMeter: NSObject {
             seconds: gaps.reduce(0, +),
             meanMs: gaps.reduce(0, +) / Double(gaps.count) * 1000,
             p95Ms: sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))] * 1000,
-            lateShare: Double(gaps.filter { $0 > expected * 1.5 }.count) / Double(gaps.count)
+            lateShare: Double(gaps.filter { $0 > expected * 1.5 }.count) / Double(gaps.count),
+            expectedMs: expected * 1000,
+            warmUp: reports == 0
         )
+        reports += 1
         gaps.removeAll()
         onReport(report)
     }
