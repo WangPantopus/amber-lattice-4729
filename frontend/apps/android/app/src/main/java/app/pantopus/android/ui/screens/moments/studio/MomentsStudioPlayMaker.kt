@@ -55,6 +55,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.pantopus.android.data.api.models.moments.MomentPlayAxisDto
 import app.pantopus.android.data.api.models.moments.MomentPlayItemDto
 import app.pantopus.android.data.api.models.moments.MomentPlayKinds
 import app.pantopus.android.data.api.models.moments.MomentPlayLimits
@@ -80,6 +81,8 @@ internal val STUDIO_PLAY_KINDS =
         Triple(MomentPlayKinds.POLL, "Poll", "Ask a question with up to four answers. Others vote and see everyone's share."),
         Triple(MomentPlayKinds.SLIDER, "Slider", "A line between two words; others slide to where they stand."),
         Triple(MomentPlayKinds.QUESTION, "Question box", "Ask anything; only you read the answers."),
+        Triple(MomentPlayKinds.GUESS, "Guess and reveal", "Others take one guess, then see the answer and how everyone did."),
+        Triple(MomentPlayKinds.BOARD, "Where do you stand", "A board with two axes; others put their face where they stand."),
         Triple(MomentPlayKinds.COUNTDOWN, "Countdown", "Count down to a time, up to 30 days ahead."),
     )
 
@@ -106,6 +109,18 @@ internal fun MomentPlayItemDto.sentCard(now: Instant = Instant.now()): MomentPla
             )
         }
         MomentPlayKinds.QUESTION -> copy(prompt = prompt?.trim()?.take(MomentPlayLimits.QUESTION_LETTERS))
+        MomentPlayKinds.GUESS -> {
+            val options = options.orEmpty().map { it.trim().take(MomentPlayLimits.OPTION_LETTERS) }.filter { it.isNotEmpty() }
+            val right = answer?.toInt()
+            copy(prompt = prompt?.trim()?.take(MomentPlayLimits.QUESTION_LETTERS), options = options)
+                .takeIf { right != null && right in options.indices }
+        }
+        MomentPlayKinds.BOARD ->
+            copy(
+                question = question?.trim()?.take(MomentPlayLimits.QUESTION_LETTERS),
+                xAxis = xAxis?.let { MomentPlayAxisDto(left = it.left?.trim()?.take(24), right = it.right?.trim()?.take(24)) },
+                yAxis = yAxis?.let { MomentPlayAxisDto(bottom = it.bottom?.trim()?.take(24), top = it.top?.trim()?.take(24)) },
+            )
         MomentPlayKinds.COUNTDOWN -> {
             val title = title?.trim()?.take(MomentPlayLimits.TITLE_LETTERS).orEmpty()
             val ends = endsAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
@@ -197,6 +212,8 @@ internal fun StudioPlayPanel(
                     MomentPlayKinds.COUNTDOWN -> CountdownForm(item, items, onItems, onDone)
                     MomentPlayKinds.SLIDER -> SliderForm(item, items, onItems, onDone)
                     MomentPlayKinds.QUESTION -> QuestionForm(item, items, onItems, onDone)
+                    MomentPlayKinds.GUESS -> GuessForm(item, items, onItems, onDone)
+                    MomentPlayKinds.BOARD -> BoardForm(item, items, onItems, onDone)
                 }
             }
         }
@@ -273,6 +290,64 @@ private fun QuestionForm(
     Heading("Question box", "Only you read the answers")
     Field(prompt, "Ask anything", "moments.studio.play.prompt") { prompt = it.take(MomentPlayLimits.QUESTION_LETTERS) }
     val made = (item ?: newPlayItem(MomentPlayKinds.QUESTION, items)).copy(prompt = prompt)
+    SaveRow(item, made.sentCard() != null, items, made, onItems, onDone)
+}
+
+/** Guess and reveal with options (a number range is made on iPhone and the web; Android reads both). */
+@Composable
+private fun GuessForm(
+    item: MomentPlayItemDto?,
+    items: List<MomentPlayItemDto>,
+    onItems: (List<MomentPlayItemDto>) -> Unit,
+    onDone: () -> Unit,
+) {
+    var prompt by rememberSaveable(item?.id) { mutableStateOf(item?.prompt.orEmpty()) }
+    var options by rememberSaveable(item?.id) { mutableStateOf(item?.options ?: listOf("", "")) }
+    var right by rememberSaveable(item?.id) { mutableStateOf(item?.answer?.toInt()) }
+    Heading("Guess and reveal", "Tap the right answer")
+    Field(prompt, "What should others guess?", "moments.studio.play.prompt") { prompt = it.take(MomentPlayLimits.QUESTION_LETTERS) }
+    options.forEachIndexed { at, option ->
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.weight(1f)) {
+                Field(option, "Answer ${at + 1}", "moments.studio.play.option$at") { typed ->
+                    options = options.mapIndexed { i, o -> if (i == at) typed.take(MomentPlayLimits.OPTION_LETTERS) else o }
+                }
+            }
+            Pill(if (right == at) "Right" else "Mark right", on = right == at, tag = "moments.studio.play.right$at") { right = at }
+        }
+    }
+    if (options.size < MomentPlayLimits.MOST_OPTIONS) {
+        Pill("Add an answer", tag = "moments.studio.play.addOption") { options = options + "" }
+    }
+    val made =
+        (item ?: newPlayItem(MomentPlayKinds.GUESS, items)).copy(prompt = prompt, options = options, answer = right?.toDouble())
+    SaveRow(item, made.sentCard() != null, items, made, onItems, onDone)
+}
+
+@Composable
+private fun BoardForm(
+    item: MomentPlayItemDto?,
+    items: List<MomentPlayItemDto>,
+    onItems: (List<MomentPlayItemDto>) -> Unit,
+    onDone: () -> Unit,
+) {
+    var question by rememberSaveable(item?.id) { mutableStateOf(item?.question.orEmpty()) }
+    var left by rememberSaveable(item?.id) { mutableStateOf(item?.xAxis?.left.orEmpty()) }
+    var right by rememberSaveable(item?.id) { mutableStateOf(item?.xAxis?.right.orEmpty()) }
+    var bottom by rememberSaveable(item?.id) { mutableStateOf(item?.yAxis?.bottom.orEmpty()) }
+    var top by rememberSaveable(item?.id) { mutableStateOf(item?.yAxis?.top.orEmpty()) }
+    Heading("Where do you stand", "Four words, one for each end")
+    Field(question, "Your question", "moments.studio.play.question") { question = it.take(MomentPlayLimits.QUESTION_LETTERS) }
+    Field(left, "Left", "moments.studio.play.left") { left = it.take(24) }
+    Field(right, "Right", "moments.studio.play.right") { right = it.take(24) }
+    Field(bottom, "Bottom", "moments.studio.play.bottom") { bottom = it.take(24) }
+    Field(top, "Top", "moments.studio.play.top") { top = it.take(24) }
+    val made =
+        (item ?: newPlayItem(MomentPlayKinds.BOARD, items)).copy(
+            question = question,
+            xAxis = MomentPlayAxisDto(left = left, right = right),
+            yAxis = MomentPlayAxisDto(bottom = bottom, top = top),
+        )
     SaveRow(item, made.sentCard() != null, items, made, onItems, onDone)
 }
 
