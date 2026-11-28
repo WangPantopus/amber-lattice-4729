@@ -171,6 +171,9 @@ struct ReinventedAtlasSearch: View {
                     .accessibilityIdentifier("reinventedAtlas.search.error")
             } else if let q = model.q {
                 results(q)
+            } else {
+                // Curiosity constellations near you (CONTRACT 9c) while nothing is searched.
+                ReinventedConstellations()
             }
         }
         .sheet(isPresented: $guide) {

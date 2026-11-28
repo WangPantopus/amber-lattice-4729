@@ -61,6 +61,8 @@ struct ReinventedPulseList: View {
                 if model.chip == "ask" { EyesOnNearSection(viewer: model.viewer) }
                 // Relics near you (CONTRACT 8g): read only once the Spots chip is picked.
                 if model.chip == "spots" { RelicsNearSection() }
+                // Places you follow (CONTRACT 9c, phase 4): at the top of Explore.
+                if model.reach == "explore" { ReinventedFollowedPlacesSection(pulse: model, moment: onOpenMoment, post: onOpenPost) }
                 if model.isEmpty {
                     emptyNote
                 }
