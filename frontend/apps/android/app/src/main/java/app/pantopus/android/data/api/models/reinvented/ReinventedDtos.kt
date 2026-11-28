@@ -95,6 +95,9 @@ data class ReinventedMapResponse(
     @Lossy val kept: List<ReinventedKeptDto> = emptyList(),
     /** CONTRACT 5d/6b: the live guess-the-spot Moments the reader may see in the area, with no point: a list, never marks. */
     @Json(name = "guess_spots") @Lossy val guessSpots: List<MomentGuessSpotDto> = emptyList(),
+    /** CONTRACT 6b: heights are on for the reader and rings float (`moment_float`): the living map (phase 4) floats them. */
+    @Json(name = "heights_on") val heightsOn: Boolean = false,
+    @Json(name = "float_on") val floatOn: Boolean = false,
 )
 
 /** A Moment live from here, with its band. */
@@ -127,6 +130,8 @@ data class ReinventedExploreResponse(
     @Lossy val items: List<ReinventedListItemDto> = emptyList(),
     @Json(name = "next_cursor") val nextCursor: String? = null,
     val pause: String? = null,
+    /** CONTRACT 9c: the first page's items near the places the reader follows (phase 4, `feed/living/LivingPlaces.kt`). */
+    @Lossy val followed: List<ReinventedListItemDto> = emptyList(),
 )
 
 /**
