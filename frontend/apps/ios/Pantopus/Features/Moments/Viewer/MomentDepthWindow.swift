@@ -250,7 +250,8 @@ struct MomentDepthWindow: View {
                     .offset(x: tilt.x * MomentDepthPlane.layers, y: tilt.y * MomentDepthPlane.layers)
             }
         #if targetEnvironment(simulator)
-            .overlay(alignment: .trailing) { MomentDepthStandInPad().padding(.trailing, 12) }
+            // Low on the right, clear of where cards and dots open.
+            .overlay(alignment: .bottomTrailing) { MomentDepthStandInPad().padding(.trailing, 12).padding(.bottom, 150) }
         #endif
             .onAppear { tilt.begin() }
             .onDisappear { tilt.end() }
