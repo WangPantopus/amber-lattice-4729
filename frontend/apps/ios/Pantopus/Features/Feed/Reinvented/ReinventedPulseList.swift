@@ -19,6 +19,8 @@ struct ReinventedPulseList: View {
     let onOpenMoment: (MomentDTO) -> Void
     let onOpenRing: (MomentRingDTO) -> Void
     let onRefreshStrip: () async -> Void
+    /// "Tonight in <town>" (8k): the film's Moments as one run in the viewer.
+    var onOpenRun: ([MomentRingDTO]) -> Void = { _ in }
 
     var body: some View {
         switch model.load {
@@ -57,6 +59,8 @@ struct ReinventedPulseList: View {
                 if let strip, !strip.isEmpty, model.reach != "explore" {
                     ReinventedAliveStrip(strip: strip, onOpenMoment: onOpenMoment, onOpenRing: onOpenRing)
                 }
+                // Tonight in <town> (CONTRACT 8k): in the evening, on Around me's whole list, read once the list has come.
+                if model.reach == "around", model.chip == "all" { ReinventedTownFilmCard(onPlay: onOpenRun) }
                 // Eyes on near you (CONTRACT 8f): read only once the Ask chip is picked.
                 if model.chip == "ask" { EyesOnNearSection(viewer: model.viewer) }
                 // Relics near you (CONTRACT 8g): read only once the Spots chip is picked.
@@ -109,6 +113,10 @@ struct ReinventedPulseList: View {
         .refreshable {
             await model.refresh()
             await onRefreshStrip()
+        }
+        // Tonight in <town> (8k): only in the evening, only once the list's first page is here (this view is the loaded list).
+        .task(id: model.reach == "around" && model.chip == "all") {
+            if model.reach == "around", model.chip == "all" { await ReinventedTownFilmModel.shared.read() }
         }
         .accessibilityIdentifier("reinventedPulse.list")
     }

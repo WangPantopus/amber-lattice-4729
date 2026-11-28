@@ -290,6 +290,12 @@ struct ReinventedPulseView: View {
         ReinventedViewerPresenter.shared.watching = MomentsWatchSession(request: request) { _ in }
     }
 
+    /// "Tonight in <town>" (8k): the film's Moments, oldest first, as one run in the viewer.
+    private func playRun(_ rings: [MomentRingDTO]) {
+        let request = MomentsWatchRequest(rings: rings, start: 0, newOnly: false)
+        ReinventedViewerPresenter.shared.watching = MomentsWatchSession(request: request) { _ in }
+    }
+
     private func open(_ moment: MomentDTO) {
         if RetakePrompt.shared.opens(moment) { return }
         if ConvergencePrompt.shared.opens(moment) { return }
@@ -389,7 +395,8 @@ extension ReinventedPulseView {
                 onOpenPost: onOpenPost,
                 onOpenMoment: open,
                 onOpenRing: { ring in open(.ring(ring)) },
-                onRefreshStrip: { await strip.read() }
+                onRefreshStrip: { await strip.read() },
+                onOpenRun: playRun
             )
         }
     }
