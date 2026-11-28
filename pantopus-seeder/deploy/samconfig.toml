@@ -17,8 +17,8 @@ region = "us-west-2"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 resolve_s3 = true
-parameter_overrides = "Environment=dev"
-disable_rollback = true
+parameter_overrides = "Environment=dev SchedulesEnabled=false"
+disable_rollback = false
 
 # ── Staging ──
 [staging.build.parameters]
@@ -30,8 +30,10 @@ region = "us-west-2"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 resolve_s3 = true
-parameter_overrides = "Environment=staging"
-disable_rollback = true
+# Explicit schedule switches (never inherit SchedulesEnabled=true catch-all).
+# Sports, no-bid nudge, and curator Pulse posting (SeederPostingEnabled) stay off.
+parameter_overrides = "Environment=staging SchedulesEnabled=false BriefingsEnabled=true SeederEnabled=true SeederPostingEnabled=false HomeRemindersEnabled=true AlertsEnabled=true MailEnabled=true MaintenanceJobsEnabled=true PaymentJobsEnabled=true"
+disable_rollback = false
 
 # ── Production ──
 [prod.build.parameters]

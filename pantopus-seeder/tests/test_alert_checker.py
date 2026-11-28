@@ -63,6 +63,8 @@ def _mock_supabase():
         chain.lt.return_value = chain
         chain.not_.return_value = chain
         chain.is_.return_value = chain
+        chain.order.return_value = chain
+        chain.range.return_value = chain
         result = MagicMock()
         result.data = []
         chain.execute.return_value = result
@@ -82,10 +84,10 @@ class TestAlreadyNotified:
         sb.table.return_value.execute.return_value = MagicMock(data=[{"id": "row-1"}])
         assert _already_notified(sb, "weather", "alert-1", "c20g8") is True
 
-    def test_returns_false_on_error(self):
+    def test_returns_true_on_error(self):
         sb = _mock_supabase()
         sb.table.side_effect = Exception("DB error")
-        assert _already_notified(sb, "weather", "alert-1", "c20g8") is False
+        assert _already_notified(sb, "weather", "alert-1", "c20g8") is True
 
     def test_logs_clear_warning_on_missing_table(self, caplog):
         clear_missing_table_warnings()
@@ -96,7 +98,7 @@ class TestAlreadyNotified:
         })
 
         with caplog.at_level("WARNING"):
-            assert _already_notified(sb, "weather", "alert-1", "c20g8") is False
+            assert _already_notified(sb, "weather", "alert-1", "c20g8") is True
 
         assert any("Supabase table unavailable" in record.message for record in caplog.records)
 
@@ -315,7 +317,7 @@ class TestSendAlertPush:
             from src.handlers.alert_checker import _send_alert_push
             result = _send_alert_push(secrets, ["u1", "u2"], "Test Alert", "Test body", "weather", {"alertId": "a1"})
 
-        assert result == 2
+        assert result == (2, True)
         mock_post.assert_called_once()
         call_kwargs = mock_post.call_args
         assert call_kwargs.kwargs["json"]["userIds"] == ["u1", "u2"]
@@ -328,4 +330,4 @@ class TestSendAlertPush:
             from src.handlers.alert_checker import _send_alert_push
             result = _send_alert_push(secrets, ["u1"], "Test", "Body", "weather", {})
 
-        assert result == 0
+        assert result == (0, False)

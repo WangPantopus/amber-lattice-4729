@@ -10,8 +10,10 @@ backend.
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 import os
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -33,6 +35,8 @@ log = logging.getLogger("seeder.handlers.alert_checker")
 FETCH_TIMEOUT_S = 10
 WEATHERKIT_TIMEOUT_S = 4
 SEND_TIMEOUT_S = 30
+OCCUPANCY_PAGE_SIZE = 1000
+MAX_CONCURRENT_GEOHASHES = 5
 AQI_UNHEALTHY_THRESHOLD = 101  # AQI >= 101 triggers notification
 NOAA_USER_AGENT = "(Pantopus, admin@pantopus.app)"
 
@@ -42,6 +46,7 @@ WEATHERKIT_JWT_LIFETIME_S = 3600       # 1 hour
 WEATHERKIT_JWT_REFRESH_S = 50 * 60     # Refresh at 50 minutes
 WEATHERKIT_BACKOFF_S = 5 * 60          # Avoid repeated slow calls during provider incidents
 WEATHERKIT_TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
+_weatherkit_lock = threading.Lock()
 _cached_wk_jwt: str | None = None
 _cached_wk_jwt_expires_at: float = 0
 _weatherkit_disabled_until: float = 0
@@ -130,27 +135,59 @@ def _run(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "weatherkit_backoff_skips": 0,
     }
 
-    # 2. For each geohash, check weather alerts and AQI
-    for geohash, user_data in geohash_users.items():
-        lat = user_data["lat"]
-        lng = user_data["lng"]
-        user_ids = user_data["user_ids"]
+    # 2. For each geohash, check weather alerts and AQI using a shared HTTP pool
+    pool_limits = httpx.Limits(
+        max_connections=MAX_CONCURRENT_GEOHASHES * 2 + 2,
+        max_keepalive_connections=MAX_CONCURRENT_GEOHASHES * 2 + 2,
+    )
+    with httpx.Client(limits=pool_limits) as http_client:
+        def _check_geohash(geohash: str, user_data: dict[str, Any]) -> dict[str, int]:
+            local_stats = {
+                "weather_alerts_found": 0,
+                "aqi_alerts_found": 0,
+                "users_notified": 0,
+                "push_errors": 0,
+                "check_errors": 0,
+                "weatherkit_fallbacks": 0,
+                "weatherkit_backoff_skips": 0,
+            }
+            lat = user_data["lat"]
+            lng = user_data["lng"]
+            user_ids = user_data["user_ids"]
 
-        try:
-            # Check weather alerts (WeatherKit → NOAA fallback)
-            weather_count = _check_weather_alerts(
-                supabase, secrets, geohash, lat, lng, user_ids, stats,
-            )
-            stats["weather_alerts_found"] += weather_count
+            try:
+                weather_count = _check_weather_alerts(
+                    supabase, secrets, geohash, lat, lng, user_ids, local_stats,
+                    http_client=http_client,
+                )
+                local_stats["weather_alerts_found"] += weather_count
 
-            # Check AQI
-            aqi_count = _check_aqi_alerts(
-                supabase, secrets, geohash, lat, lng, user_ids, stats,
-            )
-            stats["aqi_alerts_found"] += aqi_count
-        except Exception:
-            stats["check_errors"] += 1
-            log.exception("Error checking alerts for geohash=%s", geohash)
+                aqi_count = _check_aqi_alerts(
+                    supabase, secrets, geohash, lat, lng, user_ids, local_stats,
+                    http_client=http_client,
+                )
+                local_stats["aqi_alerts_found"] += aqi_count
+            except Exception:
+                local_stats["check_errors"] += 1
+                log.exception("Error checking alerts for geohash=%s", geohash)
+            return local_stats
+
+        if len(geohash_users) <= 1:
+            for geohash, user_data in geohash_users.items():
+                local_stats = _check_geohash(geohash, user_data)
+                for key, val in local_stats.items():
+                    stats[key] += val
+        else:
+            workers = min(MAX_CONCURRENT_GEOHASHES, len(geohash_users))
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = [
+                    executor.submit(_check_geohash, geohash, user_data)
+                    for geohash, user_data in geohash_users.items()
+                ]
+                for future in as_completed(futures):
+                    local_stats = future.result()
+                    for key, val in local_stats.items():
+                        stats[key] += val
 
     # 3. Cleanup expired history entries
     _cleanup_expired(supabase)
@@ -161,12 +198,13 @@ def _run(event: dict[str, Any], context: Any) -> dict[str, Any]:
     _publish_metrics(stats)
 
     log.info(
-        "Alert checker complete: geohashes=%d weather_alerts=%d aqi_alerts=%d notified=%d errors=%d latency=%dms",
+        "Alert checker complete: geohashes=%d weather_alerts=%d aqi_alerts=%d notified=%d push_errors=%d check_errors=%d latency=%dms",
         stats["geohashes_checked"],
         stats["weather_alerts_found"],
         stats["aqi_alerts_found"],
         stats["users_notified"],
         stats["push_errors"],
+        stats["check_errors"],
         elapsed_ms,
     )
 
@@ -180,17 +218,24 @@ def _get_user_geohashes(supabase) -> dict[str, dict]:
     """Get unique geohash5 → {lat, lng, user_ids} from HomeOccupancy + Home coords.
 
     Groups users by the geohash of their primary home, so we only check
-    NOAA/AQI once per geographic area.
+    NOAA/AQI once per geographic area. Paginates past PostgREST's 1,000-row cap.
     """
     try:
-        # Get all active home occupancies with home coordinates
-        result = (
-            supabase.table("HomeOccupancy")
-            .select("user_id, home_id, home:home_id(map_center_lat, map_center_lng)")
-            .eq("is_active", True)
-            .execute()
-        )
-        rows = result.data or []
+        rows: list[dict[str, Any]] = []
+        while True:
+            result = (
+                supabase.table("HomeOccupancy")
+                .select("user_id, home_id, home:home_id(map_center_lat, map_center_lng)")
+                .eq("is_active", True)
+                .order("user_id")
+                .order("home_id")
+                .range(len(rows), len(rows) + OCCUPANCY_PAGE_SIZE - 1)
+                .execute()
+            )
+            page = result.data or []
+            rows.extend(page)
+            if len(page) < OCCUPANCY_PAGE_SIZE:
+                break
     except Exception:
         log.exception("Failed to query home occupancies for geohashes")
         raise
@@ -239,50 +284,58 @@ def _weatherkit_available(secrets: BriefingSecrets) -> bool:
 
 def _weatherkit_backoff_active() -> bool:
     """Return True when WeatherKit is temporarily disabled after failures."""
-    return time.time() < _weatherkit_disabled_until
+    with _weatherkit_lock:
+        return time.time() < _weatherkit_disabled_until
 
 
 def _weatherkit_backoff_remaining_s() -> int:
-    return max(0, int(_weatherkit_disabled_until - time.time()))
+    with _weatherkit_lock:
+        return max(0, int(_weatherkit_disabled_until - time.time()))
 
 
 def _disable_weatherkit_temporarily(reason: str) -> None:
     """Disable WeatherKit briefly so one outage does not stall every geohash."""
     global _weatherkit_disabled_until, _weatherkit_disabled_reason
-    _weatherkit_disabled_until = time.time() + WEATHERKIT_BACKOFF_S
-    _weatherkit_disabled_reason = reason
+    with _weatherkit_lock:
+        _weatherkit_disabled_until = time.time() + WEATHERKIT_BACKOFF_S
+        _weatherkit_disabled_reason = reason
 
 
 def _get_weatherkit_jwt(secrets: BriefingSecrets) -> str | None:
     """Generate or return cached WeatherKit ES256 JWT."""
     global _cached_wk_jwt, _cached_wk_jwt_expires_at
 
-    if _cached_wk_jwt and time.time() < _cached_wk_jwt_expires_at:
-        return _cached_wk_jwt
+    with _weatherkit_lock:
+        if _cached_wk_jwt and time.time() < _cached_wk_jwt_expires_at:
+            return _cached_wk_jwt
 
-    try:
-        # Support base64-encoded PEM
-        raw_key = secrets.weatherkit_private_key
-        if "-----BEGIN" not in raw_key:
-            raw_key = base64.b64decode(raw_key).decode("utf-8")
+        try:
+            # Support base64-encoded PEM
+            raw_key = secrets.weatherkit_private_key
+            if "-----BEGIN" not in raw_key:
+                raw_key = base64.b64decode(raw_key).decode("utf-8")
 
-        now = int(time.time())
-        token = jwt.encode(
-            {"iss": secrets.weatherkit_team_id, "sub": secrets.weatherkit_service_id, "iat": now, "exp": now + WEATHERKIT_JWT_LIFETIME_S},
-            raw_key,
-            algorithm="ES256",
-            headers={"kid": secrets.weatherkit_key_id, "id": f"{secrets.weatherkit_team_id}.{secrets.weatherkit_service_id}"},
-        )
-        _cached_wk_jwt = token
-        _cached_wk_jwt_expires_at = time.time() + WEATHERKIT_JWT_REFRESH_S
-        return token
-    except Exception:
-        log.warning("Failed to generate WeatherKit JWT", exc_info=True)
-        return None
+            now = int(time.time())
+            token = jwt.encode(
+                {"iss": secrets.weatherkit_team_id, "sub": secrets.weatherkit_service_id, "iat": now, "exp": now + WEATHERKIT_JWT_LIFETIME_S},
+                raw_key,
+                algorithm="ES256",
+                headers={"kid": secrets.weatherkit_key_id, "id": f"{secrets.weatherkit_team_id}.{secrets.weatherkit_service_id}"},
+            )
+            _cached_wk_jwt = token
+            _cached_wk_jwt_expires_at = time.time() + WEATHERKIT_JWT_REFRESH_S
+            return token
+        except Exception:
+            log.warning("Failed to generate WeatherKit JWT", exc_info=True)
+            return None
 
 
 def _fetch_weatherkit_alerts(
-    lat: float, lng: float, secrets: BriefingSecrets,
+    lat: float,
+    lng: float,
+    secrets: BriefingSecrets,
+    *,
+    http_client: httpx.Client | None = None,
 ) -> list[dict] | None:
     """Fetch weather alerts from Apple WeatherKit.
 
@@ -304,8 +357,9 @@ def _fetch_weatherkit_alerts(
         return None
 
     url = f"{WEATHERKIT_BASE_URL}/weather/en/{lat:.4f}/{lng:.4f}?dataSets=weatherAlerts&country=US"
+    get = http_client.get if http_client is not None else httpx.get
     try:
-        resp = httpx.get(url, timeout=WEATHERKIT_TIMEOUT_S, headers={
+        resp = get(url, timeout=WEATHERKIT_TIMEOUT_S, headers={
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
         })
@@ -370,11 +424,19 @@ def _fetch_weatherkit_alerts(
 # ── NOAA fallback ──────────────────────────────────────────────
 
 
-def _fetch_noaa_alerts(lat: float, lng: float, geohash: str, stats: dict) -> list[dict] | None:
+def _fetch_noaa_alerts(
+    lat: float,
+    lng: float,
+    geohash: str,
+    stats: dict,
+    *,
+    http_client: httpx.Client | None = None,
+) -> list[dict] | None:
     """Fetch weather alerts from NOAA (fallback). Returns features list or None."""
+    get = http_client.get if http_client is not None else httpx.get
     try:
         url = f"https://api.weather.gov/alerts/active?point={lat:.4f},{lng:.4f}"
-        resp = httpx.get(url, timeout=FETCH_TIMEOUT_S, headers={
+        resp = get(url, timeout=FETCH_TIMEOUT_S, headers={
             "Accept": "application/geo+json",
             "User-Agent": NOAA_USER_AGENT,
         })
@@ -398,6 +460,8 @@ def _check_weather_alerts(
     supabase, secrets: BriefingSecrets,
     geohash: str, lat: float, lng: float,
     user_ids: list[str], stats: dict,
+    *,
+    http_client: httpx.Client | None = None,
 ) -> int:
     """Fetch weather alerts (WeatherKit first, NOAA fallback), send push for new ones."""
     features = None
@@ -405,7 +469,7 @@ def _check_weather_alerts(
     # 1. Try Apple WeatherKit first
     if _weatherkit_available(secrets):
         was_backing_off = _weatherkit_backoff_active()
-        features = _fetch_weatherkit_alerts(lat, lng, secrets)
+        features = _fetch_weatherkit_alerts(lat, lng, secrets, http_client=http_client)
         if features is None:
             stats["weatherkit_fallbacks"] = stats.get("weatherkit_fallbacks", 0) + 1
             if was_backing_off:
@@ -413,7 +477,7 @@ def _check_weather_alerts(
 
     # 2. Fall back to NOAA
     if features is None:
-        features = _fetch_noaa_alerts(lat, lng, geohash, stats)
+        features = _fetch_noaa_alerts(lat, lng, geohash, stats, http_client=http_client)
 
     if features is None:
         return 0
@@ -431,8 +495,8 @@ def _check_weather_alerts(
         if severity not in ("moderate", "severe", "extreme"):
             continue
 
-        # Check if already sent for this geohash
-        if _already_notified(supabase, "weather", alert_id, geohash):
+        # Check if already sent for this geohash (fails closed on DB error)
+        if _already_notified(supabase, "weather", alert_id, geohash, stats=stats):
             continue
 
         # New alert — send push
@@ -464,14 +528,26 @@ def _check_weather_alerts(
         if alert_source:
             push_data["source"] = alert_source
 
-        sent = _send_alert_push(secrets, user_ids, title, body, "weather", push_data)
+        sent, delivery_ok = _send_alert_push(
+            secrets, user_ids, title, body, "weather", push_data,
+            http_client=http_client,
+        )
+        if not delivery_ok:
+            stats["push_errors"] += 1
 
-        # Record in history
-        _record_notification(supabase, "weather", alert_id, geohash, severity, headline, sent, expires)
-
-        new_alert_count += 1
-        stats["users_notified"] += sent
-        log.info("Weather alert sent: event=%s severity=%s geohash=%s users=%d", event, severity, geohash, sent)
+        # Only record dedup when delivery succeeded (sent > 0 or backend confirmed
+        # 0 eligible recipients without error). Otherwise leave unrecorded so the
+        # next 10-minute run retries instead of silently suppressing a severe alert.
+        if delivery_ok or sent > 0:
+            _record_notification(supabase, "weather", alert_id, geohash, severity, headline, sent, expires)
+            new_alert_count += 1
+            stats["users_notified"] += sent
+            log.info("Weather alert sent: event=%s severity=%s geohash=%s users=%d", event, severity, geohash, sent)
+        else:
+            log.warning(
+                "Weather alert push failed with 0 deliveries; leaving unrecorded for retry: event=%s severity=%s geohash=%s",
+                event, severity, geohash,
+            )
 
     return new_alert_count
 
@@ -483,6 +559,8 @@ def _check_aqi_alerts(
     supabase, secrets: BriefingSecrets,
     geohash: str, lat: float, lng: float,
     user_ids: list[str], stats: dict,
+    *,
+    http_client: httpx.Client | None = None,
 ) -> int:
     """Check AirNow AQI, send push if it spikes above threshold.
 
@@ -496,6 +574,7 @@ def _check_aqi_alerts(
     if not api_key:
         return 0  # AQI checking requires API key
 
+    get = http_client.get if http_client is not None else httpx.get
     try:
         params = {
             "format": "application/json",
@@ -503,7 +582,7 @@ def _check_aqi_alerts(
             "longitude": str(lng),
             "API_KEY": api_key,
         }
-        resp = httpx.get(
+        resp = get(
             "https://www.airnowapi.org/aq/observation/current/ziplatlong/",
             params=params,
             timeout=FETCH_TIMEOUT_S,
@@ -540,7 +619,7 @@ def _check_aqi_alerts(
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     alert_id = f"aqi_{today_str}_{bucket}"
 
-    if _already_notified(supabase, "aqi", alert_id, geohash):
+    if _already_notified(supabase, "aqi", alert_id, geohash, stats=stats):
         return 0
 
     category_name = worst.get("aqiCategoryName") or "Unhealthy"
@@ -551,27 +630,49 @@ def _check_aqi_alerts(
     title = f"Air Quality Alert — AQI {aqi_val}"
     body = f"Air quality is {category_name.lower()} ({pollutant}). Consider limiting outdoor activity."
 
-    sent = _send_alert_push(secrets, user_ids, title, body, "aqi", {
-        "alertId": alert_id,
-        "aqi": aqi_val,
-        "category": category_name,
-        "route": "/hub",
-    })
+    sent, delivery_ok = _send_alert_push(
+        secrets, user_ids, title, body, "aqi",
+        {
+            "alertId": alert_id,
+            "aqi": aqi_val,
+            "category": category_name,
+            "route": "/hub",
+        },
+        http_client=http_client,
+    )
+    if not delivery_ok:
+        stats["push_errors"] += 1
 
-    expires = (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat()
-    _record_notification(supabase, "aqi", alert_id, geohash, bucket, f"AQI {aqi_val} — {category_name}", sent, expires)
+    if delivery_ok or sent > 0:
+        expires = (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat()
+        _record_notification(supabase, "aqi", alert_id, geohash, bucket, f"AQI {aqi_val} — {category_name}", sent, expires)
+        stats["users_notified"] += sent
+        log.info("AQI alert sent: aqi=%d category=%s geohash=%s users=%d", aqi_val, category_name, geohash, sent)
+        return 1
 
-    stats["users_notified"] += sent
-    log.info("AQI alert sent: aqi=%d category=%s geohash=%s users=%d", aqi_val, category_name, geohash, sent)
-
-    return 1
+    log.warning(
+        "AQI alert push failed with 0 deliveries; leaving unrecorded for retry: aqi=%d geohash=%s",
+        aqi_val, geohash,
+    )
+    return 0
 
 
 # ── Shared helpers ──────────────────────────────────────────────
 
 
-def _already_notified(supabase, alert_type: str, alert_id: str, geohash: str) -> bool:
-    """Check if this alert was already sent for this geohash."""
+def _already_notified(
+    supabase,
+    alert_type: str,
+    alert_id: str,
+    geohash: str,
+    *,
+    stats: dict | None = None,
+) -> bool:
+    """Check if this alert was already sent for this geohash.
+
+    Fails closed (returns True) on DB errors so transient database issues do not
+    spam duplicate alerts every 10 minutes.
+    """
     try:
         result = (
             supabase.table("AlertNotificationHistory")
@@ -586,8 +687,10 @@ def _already_notified(supabase, alert_type: str, alert_id: str, geohash: str) ->
         if is_missing_table_error(exc, "AlertNotificationHistory"):
             log_missing_table_once(log, "AlertNotificationHistory", "alert dedup", exc)
         else:
-            log.warning("Dedup check failed", exc_info=True)
-        return False  # Allow send on dedup failure (better to double-notify than miss)
+            log.warning("Dedup check failed; failing closed to prevent duplicate alerts", exc_info=True)
+        if stats is not None:
+            stats["check_errors"] = stats.get("check_errors", 0) + 1
+        return True
 
 
 def _record_notification(
@@ -613,13 +716,24 @@ def _record_notification(
 
 
 def _send_alert_push(
-    secrets: BriefingSecrets, user_ids: list[str],
-    title: str, body: str, alert_type: str, data: dict,
-) -> int:
-    """Call the Node backend to send push notifications to users."""
+    secrets: BriefingSecrets,
+    user_ids: list[str],
+    title: str,
+    body: str,
+    alert_type: str,
+    data: dict,
+    *,
+    http_client: httpx.Client | None = None,
+) -> tuple[int, bool]:
+    """Call the Node backend to send push notifications to users.
+
+    Returns (sent_count, delivery_ok) where delivery_ok is True iff the backend
+    returned HTTP 200 with zero failed recipients.
+    """
+    post = http_client.post if http_client is not None else httpx.post
     try:
         url = f"{secrets.pantopus_api_base_url}/api/internal/briefing/alert-push"
-        resp = httpx.post(
+        resp = post(
             url,
             json={
                 "userIds": user_ids,
@@ -636,13 +750,19 @@ def _send_alert_push(
         )
         if resp.status_code == 200:
             result = resp.json()
-            return result.get("sent", 0)
-        else:
-            log.warning("Alert push API returned %d: %s", resp.status_code, resp.text[:200])
-            return 0
+            sent = int(result.get("sent") or 0)
+            failed = int(result.get("failed") or 0)
+            if failed > 0:
+                log.warning(
+                    "Alert push partial/full failure: alert_type=%s sent=%d failed=%d",
+                    alert_type, sent, failed,
+                )
+            return sent, failed == 0
+        log.warning("Alert push API returned %d: %s", resp.status_code, resp.text[:200])
+        return 0, False
     except Exception:
         log.exception("Alert push API call failed")
-        return 0
+        return 0, False
 
 
 def _cleanup_expired(supabase) -> None:

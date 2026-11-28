@@ -10,6 +10,9 @@ from src.models.queue_item import RawContentItem
 
 log = logging.getLogger("seeder.pipeline.dedup")
 
+# SHA-256 hex digests are 64 chars (+ comma = 65). 50 hashes keep .in_() URLs ~3.3 KB.
+DEDUP_QUERY_CHUNK_SIZE = 50
+
 
 def compute_dedup_hash(item: RawContentItem) -> str:
     """Compute a SHA-256 dedup hash from source_id + identifier + date.
@@ -48,3 +51,42 @@ def is_duplicate(dedup_hash: str, supabase_client) -> bool:
     except Exception:
         log.warning("Dedup check failed for hash %s", dedup_hash, exc_info=True)
         return False
+
+
+def find_duplicate_hashes(
+    dedup_hashes: list[str],
+    supabase_client,
+    *,
+    chunk_size: int = DEDUP_QUERY_CHUNK_SIZE,
+) -> set[str]:
+    """Batch-check which dedup hashes already exist in the queue with an active status.
+
+    Chunks .in_() queries to stay well under PostgREST URL limits.
+    On query errors for a chunk, logs a warning and continues with remaining chunks.
+    """
+    unique_hashes = list(dict.fromkeys(h for h in dedup_hashes if h))
+    if not unique_hashes:
+        return set()
+
+    existing: set[str] = set()
+    for offset in range(0, len(unique_hashes), chunk_size):
+        chunk = unique_hashes[offset:offset + chunk_size]
+        try:
+            result = (
+                supabase_client.table("seeder_content_queue")
+                .select("dedup_hash")
+                .in_("dedup_hash", chunk)
+                .filter("status", "not.in", '("filtered_out","skipped")')
+                .execute()
+            )
+            for row in result.data or []:
+                h = row.get("dedup_hash")
+                if h:
+                    existing.add(h)
+        except Exception:
+            log.warning(
+                "Batch dedup check failed for chunk of %d hashes",
+                len(chunk),
+                exc_info=True,
+            )
+    return existing

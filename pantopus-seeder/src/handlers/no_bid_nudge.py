@@ -22,7 +22,12 @@ from typing import Any
 import httpx
 
 from src.config.secrets import get_briefing_secrets, BriefingSecrets
-from src.utils.supabase_errors import is_missing_table_error, log_missing_table_once
+from src.utils.run_metrics import publish_run_outcome
+from src.utils.supabase_errors import (
+    is_missing_table_error,
+    is_unique_violation_error,
+    log_missing_table_once,
+)
 
 logging.basicConfig(level=logging.INFO, force=True)
 # httpx logs every request URL at INFO, and Supabase filters carry full user
@@ -31,7 +36,11 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("seeder.handlers.no_bid_nudge")
 
 SEND_TIMEOUT_S = 15
+# Page size for PostgREST .range() pagination (HTTP Range header, not URL length).
 QUERY_BATCH_SIZE = 1000
+# Keep .in_() URL query strings well below 4 KB (100 UUIDs ≈ 3.7 KB; 50 prefixed keys ≈ 2.5 KB).
+IN_QUERY_BATCH_SIZE = 100
+DEDUP_QUERY_BATCH_SIZE = 50
 MIN_AGE_HOURS = 24
 MAX_AGE_HOURS = 48
 BACKFILL_CUTOFF_ENV = "NO_BID_NUDGE_BACKFILL_BEFORE"
@@ -40,10 +49,15 @@ BACKFILL_CUTOFF_ENV = "NO_BID_NUDGE_BACKFILL_BEFORE"
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """No-bid gig nudge Lambda entry point."""
     try:
-        return _run(event, context)
+        result = _run(event, context)
     except Exception:
         log.exception("No-bid nudge handler failed")
-        return {"error": "unhandled_exception"}
+        publish_run_outcome({"error": "unhandled_exception"}, "errors")
+        raise
+    publish_run_outcome(result, "errors")
+    if result.get("error"):
+        raise RuntimeError(f"No-bid nudge run failed: {result}")
+    return result
 
 
 def _run(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -88,13 +102,24 @@ def _run(event: dict[str, Any], context: Any) -> dict[str, Any]:
     stats["gigs_checked"] = len(gigs)
     log.info("Found %d candidate gigs", len(gigs))
 
-    # 2. Batch-check bids for all candidate gigs
+    # 2. Batch-check bids and dedup history for all candidate gigs (fail closed on error)
     gig_ids = [g["id"] for g in gigs]
-    gigs_with_bids = _get_gigs_with_bids(supabase, gig_ids)
-    sent_dedup_keys = _get_sent_dedup_keys(
-        supabase,
-        [f"no_bid_nudge_{gig_id}" for gig_id in gig_ids],
-    )
+    try:
+        gigs_with_bids = _get_gigs_with_bids(supabase, gig_ids)
+    except Exception:
+        stats["errors"] += 1
+        _publish_metrics(stats, start_ms)
+        return {"error": "gig_bid_query_failed", **stats}
+
+    try:
+        sent_dedup_keys = _get_sent_dedup_keys(
+            supabase,
+            [f"no_bid_nudge_{gig_id}" for gig_id in gig_ids],
+        )
+    except Exception:
+        stats["errors"] += 1
+        _publish_metrics(stats, start_ms)
+        return {"error": "dedup_query_failed", **stats}
 
     # 3. Filter to no-bid gigs that haven't been nudged yet
     eligible_gigs: list[dict] = []
@@ -116,28 +141,43 @@ def _run(event: dict[str, Any], context: Any) -> dict[str, Any]:
             poster_gigs[pid] = []
         poster_gigs[pid].append(gig)
 
-    for poster_id, user_gigs in poster_gigs.items():
-        # Check if poster has a verified home address (once per poster, not per gig)
-        has_home = _user_has_verified_home(supabase, poster_id)
+    with httpx.Client(timeout=SEND_TIMEOUT_S) as http_client:
+        for poster_id, user_gigs in poster_gigs.items():
+            # Record dedup for all gigs before sending (prevents duplicates on retry/race).
+            # Fail closed on DB errors so we never send unrecorded nudges.
+            claimed_gigs: list[dict] = []
+            for gig in user_gigs:
+                claim_status = _record_sent(supabase, f"no_bid_nudge_{gig['id']}")
+                if claim_status == "recorded":
+                    claimed_gigs.append(gig)
+                elif claim_status == "duplicate":
+                    stats["skipped_dedup"] += 1
+                else:
+                    stats["errors"] += 1
 
-        # Record dedup for all gigs before sending (prevents duplicates on retry)
-        for gig in user_gigs:
-            _record_sent(supabase, f"no_bid_nudge_{gig['id']}")
+            if not claimed_gigs:
+                continue
 
-        # Build a single notification for this poster
-        gig_titles = [g.get("title") or "your gig" for g in user_gigs]
-        first_gig_id = user_gigs[0]["id"]
+            # Check if poster has a verified home address (once per poster, not per gig)
+            has_home = _user_has_verified_home(supabase, poster_id)
 
-        result = _send_nudge(secrets, poster_id, first_gig_id, gig_titles, has_home)
-        if result == "sent":
-            stats["nudges_sent"] += 1
-            log.info(
-                "Nudge sent: poster=%s gigs=%d hasHome=%s",
-                poster_id[:8], len(user_gigs), has_home,
+            # Build a single notification for this poster
+            gig_titles = [g.get("title") or "your gig" for g in claimed_gigs]
+            first_gig_id = claimed_gigs[0]["id"]
+
+            result = _send_nudge(
+                secrets, poster_id, first_gig_id, gig_titles, has_home,
+                http_client=http_client,
             )
-        else:
-            stats["errors"] += 1
-            log.warning("Nudge failed: poster=%s result=%s", poster_id[:8], result)
+            if result == "sent":
+                stats["nudges_sent"] += 1
+                log.info(
+                    "Nudge sent: poster=%s gigs=%d hasHome=%s",
+                    poster_id[:8], len(claimed_gigs), has_home,
+                )
+            else:
+                stats["errors"] += 1
+                log.warning("Nudge failed: poster=%s result=%s", poster_id[:8], result)
 
     _publish_metrics(stats, start_ms)
 
@@ -239,23 +279,36 @@ def _fetch_open_gigs(
 
 
 def _get_gigs_with_bids(supabase, gig_ids: list[str]) -> set[str]:
-    """Return the set of gig IDs that have at least one bid."""
-    if not gig_ids:
+    """Return the set of gig IDs that have at least one bid.
+
+    Chunks .in_() queries to <= 100 UUIDs, paginates each chunk past 1,000 rows,
+    and fails closed (re-raises) on DB errors so unverified gigs are never nudged.
+    """
+    unique_ids = list(dict.fromkeys(gid for gid in gig_ids if gid))
+    if not unique_ids:
         return set()
     try:
         with_bids: set[str] = set()
-        for chunk in _chunked(gig_ids, QUERY_BATCH_SIZE):
-            result = (
-                supabase.table("GigBid")
-                .select("gig_id")
-                .in_("gig_id", chunk)
-                .execute()
-            )
-            with_bids.update(row["gig_id"] for row in (result.data or []))
+        for chunk in _chunked(unique_ids, IN_QUERY_BATCH_SIZE):
+            offset = 0
+            while True:
+                result = (
+                    supabase.table("GigBid")
+                    .select("gig_id")
+                    .in_("gig_id", chunk)
+                    .order("id")
+                    .range(offset, offset + QUERY_BATCH_SIZE - 1)
+                    .execute()
+                )
+                batch = result.data or []
+                with_bids.update(row["gig_id"] for row in batch)
+                if len(batch) < QUERY_BATCH_SIZE:
+                    break
+                offset += QUERY_BATCH_SIZE
         return with_bids
     except Exception:
-        log.exception("Failed to query GigBid")
-        return set()
+        log.exception("Failed to query GigBid; failing closed")
+        raise
 
 
 def _user_has_verified_home(supabase, user_id: str) -> bool:
@@ -277,12 +330,17 @@ def _user_has_verified_home(supabase, user_id: str) -> bool:
 
 
 def _get_sent_dedup_keys(supabase, dedup_keys: list[str]) -> set[str]:
-    """Return dedup keys that already exist in AlertNotificationHistory."""
-    if not dedup_keys:
+    """Return dedup keys that already exist in AlertNotificationHistory.
+
+    Chunks .in_() queries to stay under URL limits and fails closed (re-raises)
+    on DB errors so previously nudged gigs are never spammed.
+    """
+    unique_keys = list(dict.fromkeys(k for k in dedup_keys if k))
+    if not unique_keys:
         return set()
     try:
         already_sent: set[str] = set()
-        for chunk in _chunked(dedup_keys, QUERY_BATCH_SIZE):
+        for chunk in _chunked(unique_keys, DEDUP_QUERY_BATCH_SIZE):
             result = (
                 supabase.table("AlertNotificationHistory")
                 .select("alert_id")
@@ -295,11 +353,16 @@ def _get_sent_dedup_keys(supabase, dedup_keys: list[str]) -> set[str]:
     except Exception as exc:
         if is_missing_table_error(exc, "AlertNotificationHistory"):
             log_missing_table_once(log, "AlertNotificationHistory", "no-bid nudge dedup", exc)
-        return set()
+        else:
+            log.exception("Failed to query AlertNotificationHistory; failing closed")
+        raise
 
 
-def _record_sent(supabase, dedup_key: str) -> None:
-    """Record that a nudge was sent for permanent dedup."""
+def _record_sent(supabase, dedup_key: str) -> str:
+    """Record that a nudge was sent for permanent dedup.
+
+    Returns 'recorded', 'duplicate' (concurrent unique violation), or 'error'.
+    """
     try:
         supabase.table("AlertNotificationHistory").insert({
             "alert_type": "no_bid_nudge",
@@ -309,11 +372,16 @@ def _record_sent(supabase, dedup_key: str) -> None:
             "users_notified": 1,
             "expires_at": None,
         }).execute()
+        return "recorded"
     except Exception as exc:
+        if is_unique_violation_error(exc):
+            log.info("No-bid nudge dedup already recorded concurrently: %s", dedup_key)
+            return "duplicate"
         if is_missing_table_error(exc, "AlertNotificationHistory"):
             log_missing_table_once(log, "AlertNotificationHistory", "no-bid nudge dedup writes", exc)
         else:
             log.warning("Failed to record nudge dedup for %s", dedup_key, exc_info=True)
+        return "error"
 
 
 def _chunked(items: list[str], size: int) -> list[list[str]]:
@@ -326,6 +394,8 @@ def _send_nudge(
     first_gig_id: str,
     gig_titles: list[str],
     has_home: bool,
+    *,
+    http_client: httpx.Client | None = None,
 ) -> str:
     """Call Node backend to create notification + send push.
 
@@ -337,9 +407,10 @@ def _send_nudge(
     else:
         display_title = f"{gig_titles[0]} and {len(gig_titles) - 1} other gig{'s' if len(gig_titles) > 2 else ''}"
 
+    post = http_client.post if http_client is not None else httpx.post
     try:
         url = f"{secrets.pantopus_api_base_url}/api/internal/briefing/no-bid-nudge"
-        resp = httpx.post(
+        resp = post(
             url,
             json={
                 "userId": user_id,

@@ -28,6 +28,10 @@ logging.basicConfig(level=logging.INFO, force=True)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("seeder.handlers.poster")
 
+# Cap Claude humanizer attempts per region so repeated AI quality-gate SKIPs
+# cannot burn 50 paid LLM calls in a single invocation.
+MAX_HUMANIZER_ATTEMPTS_PER_REGION = 5
+
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -84,6 +88,7 @@ def _run(event: dict[str, Any], context: Any) -> dict[str, Any]:
     }
 
     jitter_applied = False
+    auth_state: dict[str, str | None] = {"token": None}
     for region_cfg in regions:
         local_now = now.astimezone(ZoneInfo(region_cfg.timezone))
         slot_name = _detect_slot(local_now)
@@ -113,7 +118,9 @@ def _run(event: dict[str, Any], context: Any) -> dict[str, Any]:
             time.sleep(random.randint(0, MAX_JITTER_MINUTES * 60))
             jitter_applied = True
         try:
-            result = _process_region(region_cfg, slot_name, supabase, secrets)
+            result = _process_region(
+                region_cfg, slot_name, supabase, secrets, auth_state=auth_state,
+            )
             summary["regions_processed"] += 1
             summary["tapering_stages"][region_cfg.region] = result["stage"]
             if result["outcome"] == "posted":
@@ -138,7 +145,14 @@ def _detect_slot(now_local: datetime) -> str | None:
     return None
 
 
-def _process_region(region_cfg: RegionConfig, slot_name: str, supabase, secrets) -> dict:
+def _process_region(
+    region_cfg: RegionConfig,
+    slot_name: str,
+    supabase,
+    secrets,
+    *,
+    auth_state: dict[str, str | None] | None = None,
+) -> dict:
     """Process a single region: tapering check → select → humanize → post."""
     region = region_cfg.region
 
@@ -159,9 +173,24 @@ def _process_region(region_cfg: RegionConfig, slot_name: str, supabase, secrets)
         log.info("No queued items for %s", region)
         return {"stage": stage, "outcome": "skipped"}
 
+    # Load source display names once per region instead of querying per candidate.
+    source_names = _load_source_display_names(region, supabase)
+
+    attempts = 0
     for item in candidates:
-        # Look up source display name
-        source_display_name = _get_source_display_name(item.get("source", ""), region, supabase)
+        if attempts >= MAX_HUMANIZER_ATTEMPTS_PER_REGION:
+            log.info(
+                "Reached max humanizer attempts (%d) for %s; stopping candidate loop",
+                MAX_HUMANIZER_ATTEMPTS_PER_REGION,
+                region,
+            )
+            return {"stage": stage, "outcome": "skipped"}
+        attempts += 1
+
+        # Look up source display name from the preloaded region map
+        source_display_name = _get_source_display_name(
+            item.get("source", ""), region, supabase, source_names,
+        )
 
         # Humanize
         humanized_text, humanize_error = humanize(
@@ -198,8 +227,13 @@ def _process_region(region_cfg: RegionConfig, slot_name: str, supabase, secrets)
         if not _update_queue_item(supabase, item["id"], "humanized", humanized_text=humanized_text):
             return {"stage": stage, "outcome": "failed"}
 
-        # Authenticate
-        token = authenticate_curator(curator_auth_client(secrets), secrets.curator_email, secrets.curator_password)
+        # Authenticate once per run and reuse the curator token across regions
+        reused_token = bool(auth_state is not None and auth_state.get("token"))
+        token = auth_state.get("token") if auth_state is not None else None
+        if token is None:
+            token = authenticate_curator(curator_auth_client(secrets), secrets.curator_email, secrets.curator_password)
+            if token is not None and auth_state is not None:
+                auth_state["token"] = token
         if token is None:
             log.error("Curator auth failed for region %s — resetting item to queued for retry", region)
             _update_queue_item(supabase, item["id"], "queued")
@@ -225,6 +259,33 @@ def _process_region(region_cfg: RegionConfig, slot_name: str, supabase, secrets)
             post_metadata=sports_metadata,
             source_url=item.get("source_url"),
         )
+
+        # If a cached curator token was rejected with 401, refresh once and retry.
+        if post_error == "api_rejected:401" and reused_token:
+            log.info("Cached curator token rejected (401) for %s; re-authenticating once", region)
+            if auth_state is not None:
+                auth_state["token"] = None
+            refreshed = authenticate_curator(curator_auth_client(secrets), secrets.curator_email, secrets.curator_password)
+            if refreshed is None:
+                log.error("Curator re-auth failed for region %s — resetting item to queued for retry", region)
+                _update_queue_item(supabase, item["id"], "queued")
+                return {"stage": stage, "outcome": "failed"}
+            if auth_state is not None:
+                auth_state["token"] = refreshed
+            post_id, post_error = post_to_pantopus(
+                api_base_url=secrets.pantopus_api_base_url,
+                access_token=refreshed,
+                content=humanized_text,
+                category=item["category"],
+                region_lat=region_cfg.lat,
+                region_lng=region_cfg.lng,
+                media_urls=item_media_urls if item_media_urls else None,
+                media_types=item_media_types if item_media_types else None,
+                topic="sports" if is_sports_item else None,
+                sports_scope="regional" if is_sports_item else None,
+                post_metadata=sports_metadata,
+                source_url=item.get("source_url"),
+            )
 
         if post_error:
             log.warning("Post failed for item %s: %s", item["id"], post_error)
@@ -500,16 +561,26 @@ def _get_last_posted_item(supabase, region: str) -> dict | None:
     return None
 
 
-def _get_source_display_name(source_id: str, region: str, supabase) -> str:
-    """Look up the display_name for a source_id from seeder_sources table."""
+def _load_source_display_names(region: str, supabase) -> dict[str, str]:
+    """Load source_id → display_name map once per region."""
     try:
         source_configs = load_sources_for_region(supabase, region)
-        for src in source_configs:
-            if src.source_id == source_id:
-                return src.display_name
+        return {src.source_id: src.display_name for src in source_configs}
     except Exception:
-        log.warning("Failed to look up display name for %s", source_id, exc_info=True)
-    return source_id
+        log.warning("Failed to load source display names for %s", region, exc_info=True)
+        return {}
+
+
+def _get_source_display_name(
+    source_id: str,
+    region: str,
+    supabase,
+    source_names: dict[str, str] | None = None,
+) -> str:
+    """Look up the display_name for a source_id from a preloaded map or seeder_sources."""
+    if source_names is not None:
+        return source_names.get(source_id, source_id)
+    return _load_source_display_names(region, supabase).get(source_id, source_id)
 
 
 def _build_local_sports_metadata(item: dict) -> dict:
