@@ -386,6 +386,8 @@ private fun ReinventedPulseLayout(
             modifier = Modifier.onSizeChanged { headerPx = it.height },
         )
         if (height == ReinventedHeight.Map) {
+            val guessAt = Modifier.align(Alignment.TopStart).padding(top = header + Spacing.s2, start = Spacing.s4)
+            if (!atlas.on) ReinventedGuessSpotsChip(mapState, guessAt)
             ReinventedPeekDeck(
                 deck = mapState.deck,
                 onFocus = mapModel::focus,
