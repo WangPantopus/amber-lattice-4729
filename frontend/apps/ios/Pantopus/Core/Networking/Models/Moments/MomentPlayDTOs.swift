@@ -17,6 +17,8 @@ public struct MomentPlayItem: Codable, Sendable, Hashable, Identifiable {
     public enum Kind: String, Codable, Sendable {
         case poll, slider, board, question, guess, countdown, quote, fog, swatch
         case beforeAfter = "before_after"
+        /// Moving words (CONTRACT 7k): drawn over the photo, never answered.
+        case movingWords = "moving_words"
         /// A kind this app doesn't know yet (a newer server): never drawn.
         case unknown
     }
@@ -103,6 +105,10 @@ public struct MomentPlayItem: Codable, Sendable, Hashable, Identifiable {
     public var box: Box?
     public var before: String?
     public var after: String?
+    /// Moving words (CONTRACT 7k): the lettering's shared id, the motion, and `#RRGGBB`.
+    public var lettering: String?
+    public var motion: String?
+    public var color: String?
     /// Read only: whether answers are taken now (never for the author), the reader's answer, and the results.
     public var open = false
     public var mine: Mine?
@@ -119,7 +125,7 @@ public struct MomentPlayItem: Codable, Sendable, Hashable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id, kind, x, y, scale, rotation, question, options, left, right, look, emoji, prompt, range, answer, title
-        case text, source, colors, box, before, after, open, mine, results
+        case text, source, colors, box, before, after, open, mine, results, lettering, motion, color
         case xAxis = "x_axis"
         case yAxis = "y_axis"
         case endsAt = "ends_at"
@@ -152,6 +158,9 @@ public struct MomentPlayItem: Codable, Sendable, Hashable, Identifiable {
         box = try? c.decodeIfPresent(Box.self, forKey: .box)
         before = try? c.decodeIfPresent(String.self, forKey: .before)
         after = try? c.decodeIfPresent(String.self, forKey: .after)
+        lettering = try? c.decodeIfPresent(String.self, forKey: .lettering)
+        motion = try? c.decodeIfPresent(String.self, forKey: .motion)
+        color = try? c.decodeIfPresent(String.self, forKey: .color)
         open = (try? c.decodeIfPresent(Bool.self, forKey: .open)) ?? false
         mine = try? c.decodeIfPresent(Mine.self, forKey: .mine)
         results = try? c.decodeIfPresent(Results.self, forKey: .results)
@@ -185,6 +194,9 @@ public struct MomentPlayItem: Codable, Sendable, Hashable, Identifiable {
         try c.encodeIfPresent(box, forKey: .box)
         try c.encodeIfPresent(before, forKey: .before)
         try c.encodeIfPresent(after, forKey: .after)
+        try c.encodeIfPresent(lettering, forKey: .lettering)
+        try c.encodeIfPresent(motion, forKey: .motion)
+        try c.encodeIfPresent(color, forKey: .color)
     }
 }
 
