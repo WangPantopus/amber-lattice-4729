@@ -222,7 +222,7 @@ private fun Stars(count: Int) {
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         modifier = Modifier.semantics { contentDescription = "$count of 5 stars" },
     ) {
-        (1..5).forEach { at ->
+        for (at in 1..5) {
             PantopusIconImage(
                 icon = PantopusIcon.Star,
                 contentDescription = null,

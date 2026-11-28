@@ -65,11 +65,11 @@ import androidx.compose.ui.unit.sp
 import app.pantopus.android.data.api.models.moments.MomentDotDto
 import app.pantopus.android.data.api.models.moments.MomentDotKinds
 import app.pantopus.android.data.api.models.moments.drawable
-import app.pantopus.android.ui.screens.moments.compose.MomentsComposeUiState
 import app.pantopus.android.ui.screens.moments.components.DOT
 import app.pantopus.android.ui.screens.moments.components.MomentDotMarker
 import app.pantopus.android.ui.screens.moments.components.kindWords
 import app.pantopus.android.ui.screens.moments.components.stampFrame
+import app.pantopus.android.ui.screens.moments.compose.MomentsComposeUiState
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -276,7 +276,7 @@ private fun DotEditor(
                 onChange(dot.copy(label = it))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s1)) {
-                (1..5).forEach { n ->
+                for (n in 1..5) {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier =

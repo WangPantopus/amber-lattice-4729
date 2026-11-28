@@ -12,12 +12,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.moments.CreateMomentBody
 import app.pantopus.android.data.api.models.moments.MomentAltitudeBody
+import app.pantopus.android.data.api.models.moments.MomentDotDto
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentLocationBody
 import app.pantopus.android.data.api.models.moments.MomentPlaceChoiceDto
 import app.pantopus.android.data.api.models.moments.MomentPlacePreviewDto
 import app.pantopus.android.data.api.models.moments.MomentSeriesDto
-import app.pantopus.android.data.api.models.moments.MomentDotDto
 import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
@@ -60,9 +60,9 @@ import app.pantopus.android.ui.screens.moments.map.metersBetween
 import app.pantopus.android.ui.screens.moments.studio.StudioMention
 import app.pantopus.android.ui.screens.moments.studio.StudioPair
 import app.pantopus.android.ui.screens.moments.studio.holdsStudioChoices
+import app.pantopus.android.ui.screens.moments.studio.sentDots
 import app.pantopus.android.ui.screens.moments.studio.sentGuess
 import app.pantopus.android.ui.screens.moments.studio.sentMentions
-import app.pantopus.android.ui.screens.moments.studio.sentDots
 import app.pantopus.android.ui.screens.moments.studio.sentPlay
 import app.pantopus.android.ui.screens.moments.studio.sentStamps
 import app.pantopus.android.ui.screens.moments.studio.stampElevation
