@@ -19,7 +19,7 @@ import { reactedPostPatch, serverReactionPatch } from '@/components/feed/PostRea
 import { studioViewer } from '../viewer/studioViewer';
 import { isSwitchedOff, useRereadSwitch } from '../switchOff';
 import { useBackWhenMissing } from '../serverBehind';
-import { CHIP_WORDS, isChip, readAtlasBox, readExplore, readList, readMap, readStrip, type Box, type ExploreItem, type ExplorePage, type ListMoment, type Chip, type ListItem, type ListPage, type MapTime, type Point, type Reach } from './listApi';
+import { isChip, readAtlasBox, readExplore, readList, readMap, readStrip, type Box, type ExploreItem, type ExplorePage, type ListMoment, type Chip, type ListItem, type ListPage, type MapTime, type Point, type Reach } from './listApi';
 import MomentRow from './MomentRow';
 import PostRow from './PostRow';
 import { itemPoint, type FlyTarget } from './PulseMap';
@@ -36,6 +36,7 @@ import Constellations from './Constellations';
 import Echoes from '../echoes/Echoes';
 import Windows from '../circles/Windows';
 import ReachDial from './ReachDial';
+import { FilterRow, FilterSheet, NO_FILTERS, filterCount, filterParams, useKeptFilters, type Kind } from './filters';
 import { DeckNav, deckOf } from '../deck/StepDeck';
 import { retakeOf } from '../retake/RetakeView';
 import { convergenceOf, convergenceTitle } from '../sky/Convergence';
@@ -77,12 +78,25 @@ export default function ReinventedPulse() {
   const [reach, setReach] = useState<Reach>('around');
   // One of the person's circles inside Close circle (CONTRACT 8d); null is all their connections.
   const [circle, setCircle] = useState<{ id: string; name: string } | null>(null);
-  const [chip, setChip] = useState<Chip>('all');
   const [height, setHeight] = useState<Height>('middle');
   const [point, setPoint] = useState<Point | null>(null);
   const [locating, setLocating] = useState<'idle' | 'busy' | 'refused'>('idle');
   const [viewing, setViewing] = useState<{ id: string; ids: string[] } | null>(null);
   const [time, setTime] = useState<MapTime>('live');
+  // Filters (PHASE-5 B, CONTRACT 10a): kept on this device for this person; the time row is their When.
+  const { filters, setFilters, since, ready: filtersRead } = useKeptFilters(account, time, setTime);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const closeFilters = useCallback(() => setFiltersOpen(false), []);
+  const filtered = filterCount(filters, time) > 0;
+  const listFilters = useMemo(() => filterParams(filters, time, since, 'list'), [filters, time, since]);
+  const mapFilters = useMemo(() => filterParams(filters, time, since, 'map'), [filters, time, since]);
+  const filterKey = JSON.stringify(listFilters);
+  // A single kind on is today's chip for the rows that follow one (Eyes on, Relics…); several or none is All.
+  const chip: Chip = filters.kinds.length === 1 ? filters.kinds[0] : 'all';
+  const shows = (k: Kind) => !filters.kinds.length || filters.kinds.includes(k);
+  // The row steps aside while the list scrolls down and comes back when it scrolls up.
+  const [rowHidden, setRowHidden] = useState(false);
+  const lastTop = useRef(0);
   const [box, setBox] = useState<Box | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   // Pulse, or My Atlas (the switch's third choice): the person's own kept Moments in the list's place and on the map.
@@ -132,15 +146,15 @@ export default function ReinventedPulse() {
 
   const circleId = reach === 'close' ? circle?.id ?? null : null;
   const key = useMemo(
-    () => ['reinvented', 'list', account, reach, reach === 'around' ? miles : null, chip, point?.latitude ?? null, point?.longitude ?? null, circleId] as const,
-    [account, reach, miles, chip, point, circleId],
+    () => ['reinvented', 'list', account, reach, reach === 'around' ? miles : null, filterKey, point?.latitude ?? null, point?.longitude ?? null, circleId] as const,
+    [account, reach, miles, filterKey, point, circleId],
   );
   const list = useInfiniteQuery({
     queryKey: key,
-    queryFn: ({ pageParam, signal }) => readList({ reach, miles, chip, cursor: pageParam, point, circle: circleId }, signal),
+    queryFn: ({ pageParam, signal }) => readList({ reach, miles, chip: 'all', cursor: pageParam, point, circle: circleId, filters: listFilters }, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
-    enabled: !!account && reach !== 'explore',
+    enabled: !!account && filtersRead && reach !== 'explore',
     staleTime: 30_000,
     retry: (count, error) => !isSwitchedOff(error) && count < 1,
   });
@@ -187,9 +201,9 @@ export default function ReinventedPulse() {
 
   // The map's own read for the box in view and the time row's choice (CONTRACT §6b); it follows the list's first page.
   const map = useQuery({
-    queryKey: ['reinvented', 'map', account, time, box],
-    queryFn: ({ signal }) => readMap(box!, time, signal),
-    enabled: !!account && !!box && view === 'pulse' && reach !== 'explore' && opened,
+    queryKey: ['reinvented', 'map', account, time, box, mapFilters],
+    queryFn: ({ signal }) => readMap(box!, time, signal, mapFilters),
+    enabled: !!account && filtersRead && !!box && view === 'pulse' && reach !== 'explore' && opened,
     placeholderData: keepPreviousData,
     staleTime: 30_000,
     retry: (count, error) => !isSwitchedOff(error) && count < 1,
@@ -257,6 +271,8 @@ export default function ReinventedPulse() {
   const pages = list.data?.pages;
   const first = pages?.[0];
   const items = useMemo(() => pages?.flatMap((p) => p.items) ?? [], [pages]);
+  // With filters on, Heads-ups always come back (CONTRACT 10a): a list of only those is still an empty result.
+  const onlyHeadsUps = filtered && items.length > 0 && items.every((i) => i.type === 'post' && i.post.post_type === 'alert');
   const last = pages?.[pages.length - 1];
   // The chips this reach and place have something for, as the first page names them; kept while another chip loads.
   const [chips, setChips] = useState<Chip[]>(['all']);
@@ -282,10 +298,11 @@ export default function ReinventedPulse() {
     return () => watch.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage, items.length]);
 
-  // A new reach or chip starts the list from its top.
+  // A new reach or other filters start the list from its top, with the row in view.
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
-  }, [reach, chip]);
+    setRowHidden(false);
+  }, [reach, filterKey]);
 
   // ── Posts: today's card, its answers patched into this list's pages ──
   const patchPost = useCallback(
@@ -584,7 +601,7 @@ export default function ReinventedPulse() {
 
   const placeName =
     reach === 'explore' ? 'Explore' : reach === 'close' ? circle?.name || 'Your circle' : first?.place?.label || (first?.needs_place ? 'No place yet' : 'Near you');
-  const fitKey = `${reach}|${miles}|${chip}|${point?.latitude ?? ''}|${point?.longitude ?? ''}|${(reach === 'explore' ? explore.dataUpdatedAt : list.dataUpdatedAt) ? 'read' : ''}`;
+  const fitKey = `${reach}|${miles}|${filterKey}|${point?.latitude ?? ''}|${point?.longitude ?? ''}|${(reach === 'explore' ? explore.dataUpdatedAt : list.dataUpdatedAt) ? 'read' : ''}`;
   const fallback = point ?? (home ? { latitude: home.lat, longitude: home.lng } : null);
   let prevBand: string | null = null;
 
@@ -609,13 +626,11 @@ export default function ReinventedPulse() {
             miles={miles}
             place={first?.place?.label ?? null}
             onReach={(r) => {
-              if (r !== reach) setChip('all');
               setReach(r);
               if (r !== 'close') setCircle(null);
             }}
             circle={circle?.id ?? null}
             onCircle={(c) => {
-              setChip('all');
               setReach('close');
               setCircle(c);
             }}
@@ -637,14 +652,19 @@ export default function ReinventedPulse() {
         </button>
       </div>
 
-      {view === 'pulse' && reach !== 'explore' && chips.length > 1 && (
-        <div className="rp-chips" role="group" aria-label="Show">
-          {chips.map((c) => (
-            <button key={c} type="button" aria-pressed={chip === c} onClick={() => setChip(c)}>
-              {CHIP_WORDS[c]}
-            </button>
-          ))}
-        </div>
+      {view === 'pulse' && reach !== 'explore' && (
+        <FilterRow
+          filters={filters}
+          time={time}
+          chips={chips}
+          hidden={rowHidden && height !== 'map'}
+          onFilters={setFilters}
+          onClear={() => {
+            setFilters(NO_FILTERS);
+            setTime('live');
+          }}
+          onOpen={() => setFiltersOpen(true)}
+        />
       )}
       {view === 'pulse' && reach !== 'explore' && (height === 'map' || sideBySide) && (
         <AskTheMap box={box} time={time} data={map.data} lit={lit} shown={lit ? pins.filter((p) => lit.pins.has(p.key)).length : 0} onLit={setLit} />
@@ -735,7 +755,18 @@ export default function ReinventedPulse() {
             )}
           </div>
         )}
-        <div ref={scroller} className="rp-list" aria-busy={list.isFetching || undefined} aria-hidden={height === 'map' || undefined}>
+        <div
+          ref={scroller}
+          className="rp-list"
+          aria-busy={list.isFetching || undefined}
+          aria-hidden={height === 'map' || undefined}
+          onScroll={(e) => {
+            const top = e.currentTarget.scrollTop;
+            if (top > lastTop.current + 8 && top > 80) setRowHidden(true);
+            else if (top < lastTop.current - 8 || top <= 80) setRowHidden(false);
+            if (Math.abs(top - lastTop.current) > 8 || top <= 80) lastTop.current = top;
+          }}
+        >
           {view === 'atlas' && account ? (
             <AtlasView
               account={account}
@@ -813,13 +844,13 @@ export default function ReinventedPulse() {
               {/* Homes talk to homes (CONTRACT 9f): the circles' windows, at the top of Close circle. */}
               {reach === 'close' && account && <Windows account={account} />}
               {/* Echoes (CONTRACT 9e): nothing is pushed; in the evening, by the reader's own clock, they show here too. */}
-              {reach === 'around' && account && !!first && chip === 'all' && new Date(now).getHours() >= 18 && (
+              {reach === 'around' && account && !!first && !filters.kinds.length && new Date(now).getHours() >= 18 && (
                 <Echoes account={account} onOpen={(id) => setViewing({ id, ids: [id] })} />
               )}
-              {reach === 'around' && account && (chip === 'all' || chip === 'live') && (
+              {reach === 'around' && account && shows('live') && (
                 <TownFilm account={account} place={fallback} ready={!!first} now={now} onPlay={(ids, start) => setViewing({ id: start, ids })} />
               )}
-              {strip.data && (chip === 'all' || chip === 'live') && (
+              {strip.data && shows('live') && (
                 <AliveStrip
                   strip={strip.data}
                   bandLabel={(b) => (b ? bandLabels.get(b) || null : null)}
@@ -828,25 +859,45 @@ export default function ReinventedPulse() {
                   onPlan={(t) => router.push(`/app/plans/${encodeURIComponent(t.id)}`)}
                 />
               )}
-              {reach === 'around' && account && (chip === 'all' || chip === 'ask') && (
+              {reach === 'around' && account && shows('ask') && (
                 <EyesOnNear account={account} point={point} offer={chip === 'ask'} now={now} onAnswer={setAnswering} />
               )}
-              {reach === 'around' && account && (chip === 'all' || chip === 'spots') && (
+              {reach === 'around' && account && shows('spots') && (
                 <RelicsNear account={account} point={point} offer={chip === 'spots'} />
               )}
-              {items.length === 0 && (
+              {(items.length === 0 || onlyHeadsUps) && (
                 <div className="rp-empty">
                   <p>
-                    {chip !== 'all'
-                      ? `Nothing under ${CHIP_WORDS[chip]} ${reach === 'close' ? 'from your circle' : 'around you'} right now.`
+                    {onlyHeadsUps
+                      ? `Nothing else matches these filters ${reach === 'close' ? 'in your circle' : 'around you'} right now. Safety notices always show.`
+                      : filtered
+                      ? `Nothing matches these filters ${reach === 'close' ? 'in your circle' : 'around you'} right now.`
                       : reach === 'close'
                         ? 'Nothing from your circle right now. Their Moments and posts show here as they share them.'
                         : 'Nothing around you right now. Post the first Moment, or ask something.'}
                   </p>
-                  {chip !== 'all' && (
-                    <button type="button" className="rp-button" onClick={() => setChip('all')}>
-                      Show all
-                    </button>
+                  {filtered && (
+                    <div className="rp-empty-actions">
+                      <button
+                        type="button"
+                        className="rp-button"
+                        onClick={() => {
+                          setFilters(NO_FILTERS);
+                          setTime('live');
+                        }}
+                      >
+                        Clear filters
+                      </button>
+                      {(reach === 'close' || (reach === 'around' && miles < 25)) && (
+                        <button
+                          type="button"
+                          className="rp-button rp-button-quiet"
+                          onClick={() => (reach === 'close' ? (setReach('around'), setCircle(null)) : setMiles(25))}
+                        >
+                          Look wider
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -989,6 +1040,9 @@ export default function ReinventedPulse() {
             void client.invalidateQueries({ queryKey: ['reinvented'] });
           }}
         />
+      )}
+      {filtersOpen && (
+        <FilterSheet filters={filters} time={time} since={since} onFilters={setFilters} onTime={setTime} onClose={closeFilters} />
       )}
       {creating && account && (
         <Composer

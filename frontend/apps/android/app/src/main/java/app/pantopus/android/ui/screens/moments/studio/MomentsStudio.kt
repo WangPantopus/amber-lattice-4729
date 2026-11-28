@@ -73,9 +73,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.api.models.moments.MomentDotDto
+import app.pantopus.android.data.api.models.moments.MomentPlayItemDto
 import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.moments.MomentMediaFile
 import app.pantopus.android.ui.screens.feed.reinvented.after.StudioPostKindRow
+import app.pantopus.android.ui.screens.feed.reinvented.after.TogetherStudioGhost
 import app.pantopus.android.ui.screens.feed.reinvented.after.studioPostPill
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
@@ -157,6 +159,8 @@ internal fun MomentsStudioStep(
     beforeAfter: StudioBeforeAfterActions = StudioBeforeAfterActions(),
     // Illuminate (phase 2, CONTRACT 7c): the dots as they are now.
     onDots: (List<MomentDotDto>) -> Unit = {},
+    // Playable items (phase 2, CONTRACT 7b, 7k: moving words so far): the items as they are now.
+    onItems: (List<MomentPlayItemDto>) -> Unit = {},
     gate: MomentsStudioGateViewModel = hiltViewModel(),
     penNames: PenNameChoiceViewModel = hiltViewModel(),
 ) {
@@ -166,6 +170,9 @@ internal fun MomentsStudioStep(
     // Illuminate (phase 2): its panel, and the dot it shows.
     var illuminate by rememberSaveable { mutableStateOf(false) }
     var pickedDot by rememberSaveable { mutableStateOf<String?>(null) }
+    // Moving words (CONTRACT 7k): their form, and the item it changes (null: a new one).
+    var wordsForm by rememberSaveable { mutableStateOf(false) }
+    var wordsItem by rememberSaveable { mutableStateOf<String?>(null) }
     // "Made-up name" (made-up-names contract, "Moments"): offered once `/api/pen-names/me` has answered, checked at the pin.
     val postAs by penNames.postAs.collectAsStateWithLifecycle()
     val setupOpen by penNames.setupOpen.collectAsStateWithLifecycle()
@@ -190,12 +197,17 @@ internal fun MomentsStudioStep(
     ) {
         val pair = state.studioPair
         if (pair != null) StudioBeforeAfterPicture(pair) else StudioPicture(state)
+        TogetherStudioGhost(state)
         if (pair == null) StudioCutoutPress(state, onLift = onLiftCutout)
         // The stamps sit on the picture, under the X, the tools, the caption and the bar.
         StudioStampLayer(state = state, onStamps = onStamps)
         StudioDotLayer(state.dots, rememberStudioPicture(state), enabled = !state.posting, onDots = onDots) { id ->
             pickedDot = id
             illuminate = true
+        }
+        StudioPlayLayer(state.items, rememberStudioPicture(state), enabled = !state.posting, onItems = onItems) { id ->
+            wordsItem = id
+            wordsForm = true
         }
         // The fades keep the rail and the caption readable over a bright picture.
         Box(
@@ -364,6 +376,12 @@ internal fun MomentsStudioStep(
                 onPlaceCutout(file)
             },
             cutoutsAccount = gate.account,
+            onMovingWords =
+                {
+                    tray = false
+                    wordsItem = null
+                    wordsForm = true
+                }.takeIf { state.offersMovingWords },
             beforeAfter =
                 beforeAfter.copy(
                     make = {
@@ -380,6 +398,13 @@ internal fun MomentsStudioStep(
             onPick = { pickedDot = it },
             onDots = onDots,
             onDone = { illuminate = false },
+        )
+        StudioMovingWordsPanel(
+            visible = wordsForm,
+            editing = wordsItem,
+            items = state.items,
+            onItems = onItems,
+            onDone = { wordsForm = false },
         )
         if (fullMap) {
             state.postMapSpot?.let { spot ->

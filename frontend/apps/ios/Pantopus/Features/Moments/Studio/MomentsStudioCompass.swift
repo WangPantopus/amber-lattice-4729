@@ -73,7 +73,10 @@ final class MomentsStudioCompass: NSObject, CLLocationManagerDelegate {
     func heading(at date: Date) -> MomentHeadingBody? {
         guard let nearest = readings.min(by: { abs($0.at.timeIntervalSince(date)) < abs($1.at.timeIntervalSince(date)) }),
               abs(nearest.at.timeIntervalSince(date)) <= 2, nearest.accuracy <= 30 else { return nil }
-        return MomentHeadingBody(deg: (nearest.deg * 10).rounded() / 10, accuracyDeg: (nearest.accuracy * 10).rounded() / 10)
+        // Rounded to a tenth first, then brought under 360: a reading of 359.95 or more would otherwise go as 360.0, which
+        // the server drops.
+        let deg = ((nearest.deg * 10).rounded() / 10).truncatingRemainder(dividingBy: 360)
+        return MomentHeadingBody(deg: deg, accuracyDeg: (nearest.accuracy * 10).rounded() / 10)
     }
 }
 

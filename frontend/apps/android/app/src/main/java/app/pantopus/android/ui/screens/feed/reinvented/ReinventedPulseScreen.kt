@@ -59,6 +59,10 @@ import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.data.pulse.ReinventedBox
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentRetakeListSheet
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentRetakeState
+import app.pantopus.android.ui.screens.feed.reinvented.after.TogetherStudio
+import app.pantopus.android.ui.screens.feed.reinvented.after.TogetherStudioOpener
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -158,6 +162,9 @@ fun ReinventedPulseScreen(
     )
     ReinventedCardSheets(viewModel.cards, cards, actions.onQuotePost)
     ReinventedAtlasItem(atlasState, atlasModel::close, atlasModel::askDelete, atlasModel::keep, atlasModel::deleteForGood)
+    // Phase 3 (CONTRACT 8e): the Retake opened from the list, and the Studio it asks for.
+    MomentRetakeListSheet()
+    TogetherStudioOpener(actions.onCompose)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         ReinventedToast(toast, onDismiss = viewModel::dismissToast)
     }
@@ -235,6 +242,8 @@ private class ReinventedWatch(
     private val onWatch: () -> Unit,
 ) {
     fun moment(moment: MomentDto) {
+        // A Moment of a Retake opens the Retake (CONTRACT 8e), not the viewer.
+        if (MomentRetakeState.opens(moment)) return
         viewModel.watch(moment)
         onWatch()
     }
@@ -384,7 +393,13 @@ private fun ReinventedPulseLayout(
                     }
                     ReinventedPeekDeck(deck = mapState.deck, onFocus = mapModel::focus, onOpen = open, modifier = deck)
                 },
-                add = { modifier -> AddButton(actions.onCompose, modifier) },
+                // + opens a Studio with nothing of phase 3 chosen (a Retake's frame opens it through TogetherStudioOpener).
+                add = { modifier ->
+                    AddButton({
+                        TogetherStudio.reset()
+                        actions.onCompose()
+                    }, modifier)
+                },
                 list = list,
             )
         if (wide) ReinventedSideBySide(height, parts) else ReinventedOverMap(height, onHeight, maxHeight, parts)

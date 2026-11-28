@@ -4,6 +4,7 @@ package app.pantopus.android.ui.screens.feed.reinvented.after
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.DropdownMenu
@@ -49,6 +51,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.reinvented.MomentReplyDto
+import app.pantopus.android.data.api.models.reinvented.shownRetake
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.displayMessage
 import app.pantopus.android.data.pulse.TogetherRepository
@@ -75,8 +78,8 @@ internal object MomentRepliesState {
     /** The replies sheet is up. */
     val sheet = mutableStateOf(false)
 
-    /** The viewer holds still: the sheet is up, or a pin is being dropped or one is open (8b). */
-    val open: State<Boolean> = derivedStateOf { sheet.value || MomentPinsState.holds }
+    /** The viewer holds still: the sheet is up, a pin is being dropped or one is open (8b), or the Retake is open (8e). */
+    val open: State<Boolean> = derivedStateOf { sheet.value || MomentPinsState.holds || MomentRetakeState.inViewer.value != null }
 }
 
 data class MomentRepliesUi(
@@ -182,19 +185,28 @@ class MomentRepliesViewModel
 
 /**
  * Under the viewer's header while the switch is on (the caller's `studio`): "3 replies" on a Moment whose replies show,
- * and, on one's own Moment, the way to show or hide them. Nothing where the server sends no `replies`.
+ * and, on one's own Moment, the way to show or hide them; pins beside it; and a Retake's chip (8e). Nothing where the
+ * server sends neither `replies` nor `retake`. [onClose] closes the viewer (a Retake's "Add your frame" opens the Studio).
  */
 @Composable
 fun MomentRepliesChip(
     moment: MomentDto,
     mine: Boolean,
     modifier: Modifier = Modifier,
+    onClose: () -> Unit = {},
     viewModel: MomentRepliesViewModel = hiltViewModel(),
 ) {
-    val state = moment.replies ?: return
+    val state = moment.replies
+    if (state == null) {
+        if (moment.shownRetake != null) Row(modifier = modifier) { MomentRetakeChip(moment, onClose) }
+        return
+    }
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val shown = ui.shown.takeIf { ui.momentId == moment.id } ?: state.shown
-    if (!shown && !mine) return
+    if (!shown && !mine) {
+        if (moment.shownRetake != null) Row(modifier = modifier) { MomentRetakeChip(moment, onClose) }
+        return
+    }
     var open by MomentRepliesState.sheet
     DisposableEffect(moment.id) { onDispose { MomentRepliesState.sheet.value = false } }
     val count = if (ui.momentId == moment.id && ui.replies.isNotEmpty()) ui.replies.size else state.count
@@ -205,13 +217,15 @@ fun MomentRepliesChip(
             count == 1 -> "1 reply"
             else -> "$count replies"
         }
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+    // The row scrolls sideways when the replies, pins and Retake chips don't fit.
+    Row(modifier = modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
         RepliesPill(words) {
             viewModel.open(moment.id)
             open = true
         }
-        // Pins on the photo (8b), beside it.
+        // Pins on the photo (8b), beside it, then the Retake it belongs to (8e).
         MomentPinsControls(moment, shown)
+        MomentRetakeChip(moment, onClose, Modifier.padding(start = Spacing.s2))
     }
     if (open) {
         RepliesSheet(moment, mine, shown, canReply = state.canReply && shown, ui = ui, viewModel = viewModel) { open = false }

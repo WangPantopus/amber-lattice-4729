@@ -271,6 +271,7 @@ fun MomentsComposeScreen(
                                 takeApart = viewModel::takeApartBeforeAfter,
                             ),
                         onDots = viewModel::setDots,
+                        onItems = viewModel::setItems,
                     )
                 } else {
                     ReviewStep(

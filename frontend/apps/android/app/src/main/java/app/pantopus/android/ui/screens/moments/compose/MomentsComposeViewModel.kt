@@ -17,6 +17,7 @@ import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentLocationBody
 import app.pantopus.android.data.api.models.moments.MomentPlaceChoiceDto
 import app.pantopus.android.data.api.models.moments.MomentPlacePreviewDto
+import app.pantopus.android.data.api.models.moments.MomentPlayItemDto
 import app.pantopus.android.data.api.models.moments.MomentSeriesDto
 import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.api.net.NetworkError
@@ -42,6 +43,7 @@ import app.pantopus.android.ui.screens.compose.pulse.MediaLocationAccess
 import app.pantopus.android.ui.screens.compose.pulse.PickedPlace
 import app.pantopus.android.ui.screens.compose.pulse.readPickedPlace
 import app.pantopus.android.ui.screens.feed.living.livingHeading
+import app.pantopus.android.ui.screens.feed.reinvented.after.TogetherCreate
 import app.pantopus.android.ui.screens.feed.reinvented.after.sentExplore
 import app.pantopus.android.ui.screens.moments.MomentsRoutes
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
@@ -248,6 +250,8 @@ data class MomentsComposeUiState(
     val pair: StudioPair? = null,
     /** "Pulse, reinvented"'s Studio: Illuminate's dots (CONTRACT 7c). Only the Studio sets them. */
     val dots: List<MomentDotDto> = emptyList(),
+    /** "Pulse, reinvented"'s Studio: playable items placed on the picture (CONTRACT 7b, 7k). Only the Studio sets them. */
+    val items: List<MomentPlayItemDto> = emptyList(),
 ) {
     val kind: String
         get() =
@@ -1037,6 +1041,9 @@ class MomentsComposeViewModel
         /** "Pulse, reinvented"'s Studio: Illuminate's dots as they are now (added, written, moved, removed). */
         fun setDots(dots: List<MomentDotDto>) = _state.update { it.copy(dots = dots.take(MomentDotDto.MOST)) }
 
+        /** "Pulse, reinvented"'s Studio: its playable items as they are now (added, moved, turned, removed). */
+        fun setItems(items: List<MomentPlayItemDto>) = _state.update { it.copy(items = items) }
+
         /** "Pulse, reinvented"'s Studio tray: the two words over before and after's halves. */
         fun setPairWords(
             before: String,
@@ -1172,7 +1179,15 @@ class MomentsComposeViewModel
                 if (!it.holdsStudioChoices) {
                     it
                 } else {
-                    it.copy(stamps = emptyList(), madeUp = false, guess = false, mentions = emptyList(), pair = null, dots = emptyList())
+                    it.copy(
+                        stamps = emptyList(),
+                        madeUp = false,
+                        guess = false,
+                        mentions = emptyList(),
+                        pair = null,
+                        dots = emptyList(),
+                        items = emptyList(),
+                    )
                 }
             }
 
@@ -1328,7 +1343,7 @@ class MomentsComposeViewModel
             if (videos != null && videos.size > 1 && media is MomentMediaFile.Video) {
                 return publishParts(body, media, videos, pinned, retried)
             }
-            return when (val result = repository.create(body)) {
+            return when (val result = TogetherCreate.create(body, current) ?: repository.create(body)) {
                 is NetworkResult.Success -> {
                     val moment = result.data
                     val video = videos?.firstOrNull()

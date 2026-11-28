@@ -9,6 +9,7 @@ const logger = require('../utils/logger');
 const store = require('../services/moments/momentStore');
 const list = require('../services/pulse/list');
 const pulseMap = require('../services/pulse/map');
+const pulseFilters = require('../services/pulse/filters');
 const atlas = require('../services/pulse/atlas');
 const explore = require('../services/pulse/explore');
 const keep = require('../services/pulse/keep');
@@ -46,6 +47,12 @@ const listSchema = Joi.object({
   limit: Joi.number().integer().min(1).max(50).default(20),
   // One of the reader's circles, with Close circle (CONTRACT 8d).
   circle: Joi.string().guid(),
+  // Filters (CONTRACT 10a): checked by filters.parse from the raw query, so a request without them reads as before.
+  kinds: Joi.string().max(80),
+  when: Joi.string().max(16),
+  from: Joi.string().max(16),
+  state: Joi.string().max(40),
+  since: Joi.string().max(40),
 }).and('latitude', 'longitude');
 
 /** GET /list — Close circle or Around me: the Moments and posts the caller may see, mixed (CONTRACT 6a). */
@@ -53,7 +60,9 @@ router.get('/list', async (req, res) => {
   try {
     const { error, value } = listSchema.validate(req.query || {}, { abortEarly: true, stripUnknown: true });
     if (error) return res.status(400).json({ error: error.details[0].message.replace(/"/g, ''), code: 'LIST_INVALID' });
-    res.json(await list.listFor(req.user.id, value));
+    const { kinds: _k, when: _w, from: _f, state: _s, since: _si, ...asked } = value;
+    const filters = pulseFilters.parse(req.query, { code: 'LIST_INVALID' });
+    res.json(await list.listFor(req.user.id, { ...asked, ...(filters ? { filters } : {}) }));
   } catch (error) {
     sendError(res, error, 'list');
   }
@@ -67,6 +76,12 @@ const mapSchema = Joi.object({
   east: Joi.number().min(-180).max(180).required(),
   zoom: Joi.number().min(0).max(25),
   time: Joi.string().valid(...pulseMap.TIMES).default('live'),
+  // Filters (CONTRACT 10a); the map's `time` is its When.
+  kinds: Joi.string().max(80),
+  when: Joi.string().max(16),
+  from: Joi.string().max(16),
+  state: Joi.string().max(40),
+  since: Joi.string().max(40),
 });
 
 /** GET /map — the one map for a box and a time: rings, marks, tickets, guess spots (CONTRACT 6b). */
@@ -74,11 +89,12 @@ router.get('/map', async (req, res) => {
   try {
     const { error, value } = mapSchema.validate(req.query || {}, { abortEarly: true, stripUnknown: true });
     if (error) return res.status(400).json({ error: error.details[0].message.replace(/"/g, ''), code: 'MAP_INVALID' });
-    const { time, zoom: _zoom, ...box } = value;
+    const { time, zoom: _zoom, kinds: _k, when: _w, from: _f, state: _s, since: _si, ...box } = value;
     if (box.south >= box.north || box.west >= box.east) {
       return res.status(400).json({ error: 'Send a map area with south < north and west < east.', code: 'MAP_INVALID' });
     }
-    res.json(await pulseMap.mapFor(req.user, box, { time }));
+    const filters = pulseFilters.parse(req.query, { forMap: true, code: 'MAP_INVALID' });
+    res.json(await pulseMap.mapFor(req.user, box, { time, ...(filters ? { filters } : {}) }));
   } catch (error) {
     sendError(res, error, 'map');
   }
@@ -409,6 +425,51 @@ router.delete('/moments/:id/sound', async (req, res) => {
     return res.status(204).end();
   } catch (error) {
     return sendError(res, error, 'sound_remove');
+  }
+});
+
+// ─── A Live Photo's motion (CONTRACT 10b) ───────────────────────────────────
+
+const motionMedia = require('../services/pulse/motion');
+
+const motionUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: motionMedia.MAX_BYTES, files: 3, fields: 4, parts: 8, fieldSize: 1024, fieldNameSize: 40 },
+}).fields([{ name: 'file', maxCount: 1 }, { name: 'frames[]', maxCount: 2 }, { name: 'frames', maxCount: 2 }]);
+
+function receiveMotion(req, res, next) {
+  motionUpload(req, res, (error) => {
+    if (!error) return next();
+    if (error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'This motion clip is too large to post.', code: 'MEDIA_TOO_LARGE' });
+    return res.status(400).json({ error: 'Send the motion clip as "file", with one or two "frames[]".', code: 'MOTION_INVALID' });
+  });
+}
+
+const MOMENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** POST /moments/:id/motion — the motion clip of the author's own photo Moment, beside its photo. */
+router.post('/moments/:id/motion', contentCreationLimiter, receiveMotion, async (req, res) => {
+  try {
+    if (!MOMENT_ID.test(req.params.id)) return res.status(404).json({ error: 'This Moment could not be found.', code: 'MOMENT_NOT_FOUND' });
+    const files = req.files || {};
+    const row = await motionMedia.upload(req.params.id, req.user, {
+      file: files.file?.[0] || null, frames: [...(files['frames[]'] || []), ...(files.frames || [])],
+    });
+    const [moment] = await store.serializeMoments([row], req.user.id);
+    return res.json({ moment });
+  } catch (error) {
+    return sendError(res, error, 'motion');
+  }
+});
+
+/** DELETE /moments/:id/motion — the author takes the motion off; the photo stays. */
+router.delete('/moments/:id/motion', async (req, res) => {
+  try {
+    if (!MOMENT_ID.test(req.params.id)) return res.status(404).json({ error: 'This Moment could not be found.', code: 'MOMENT_NOT_FOUND' });
+    await motionMedia.remove(req.params.id, req.user);
+    return res.status(204).end();
+  } catch (error) {
+    return sendError(res, error, 'motion_remove');
   }
 });
 

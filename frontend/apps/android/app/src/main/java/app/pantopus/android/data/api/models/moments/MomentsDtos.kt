@@ -186,6 +186,8 @@ data class MomentDto(
     val play: List<MomentPlayItemDto>? = null,
     /** "Pulse, reinvented" (CONTRACT 7c): Illuminate's dots, for a reader whose switch is on; else null. */
     val dots: List<MomentDotDto>? = null,
+    /** "Pulse, reinvented" (CONTRACT 8e): the Retake it belongs to, for a reader whose switch is on; else null. */
+    val retake: app.pantopus.android.data.api.models.reinvented.MomentRetakeStateDto? = null,
 )
 
 /**
