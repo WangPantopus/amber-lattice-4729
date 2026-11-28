@@ -548,6 +548,7 @@ internal fun StudioStampTray(
     onPlaceCutout: (File) -> Unit = {},
     cutoutsAccount: String? = null,
     beforeAfter: StudioBeforeAfterActions = StudioBeforeAfterActions(),
+    onMovingWords: (() -> Unit)? = null,
     stamps: MomentsStudioStampsViewModel = hiltViewModel(),
 ) {
     val ui by stamps.state.collectAsStateWithLifecycle()
@@ -570,13 +571,14 @@ internal fun StudioStampTray(
         onDone = onDone,
         // Play: "Guess the spot", for a photo or video with a place away from home; film looks, for a photo.
         play =
-            if (state.offersGuess || looks || pair != null) {
+            if (offersPlay(state.offersGuess || looks || pair != null, onMovingWords)) {
                 {
                     if (state.offersGuess) StudioGuessRow(on = state.guess, onToggle = { onGuess(!state.guess) })
                     if (looks) StudioLooksRow(picture = asItCame, picked = state.marks.look, onPick = onLook)
                     if (strip > 0) StudioPhotostripRow(more = strip, onMake = onPhotostrip)
                     if (looks) StudioYourCutoutsRow(account = cutoutsAccount, onPlace = onPlaceCutout)
                     StudioBeforeAfterRow(pair, offersPair, beforeAfter.make, beforeAfter.words, beforeAfter.takeApart)
+                    onMovingWords?.let { StudioMovingWordsRow(onMake = it) }
                 }
             } else {
                 null
@@ -591,6 +593,12 @@ internal fun StudioStampTray(
         }
     }
 }
+
+/** The tray has a Play section: something of its own to offer, or moving words (CONTRACT 7k). */
+private fun offersPlay(
+    offers: Boolean,
+    onMovingWords: (() -> Unit)?,
+): Boolean = offers || onMovingWords != null
 
 /** The screen's size in pixels, where a picture is drawn to fill it. */
 @Composable

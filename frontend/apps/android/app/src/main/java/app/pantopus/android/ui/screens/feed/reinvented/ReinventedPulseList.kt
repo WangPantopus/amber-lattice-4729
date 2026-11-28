@@ -45,6 +45,8 @@ import app.pantopus.android.data.api.models.reinvented.PulseTravelDto
 import app.pantopus.android.data.api.models.reinvented.shownRetake
 import app.pantopus.android.data.pulse.ReinventedPoint
 import app.pantopus.android.ui.components.EmptyState
+import app.pantopus.android.ui.screens.feed.living.LivingFollowedPlaces
+import app.pantopus.android.ui.screens.feed.living.LivingWindowsRow
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCard
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
 import app.pantopus.android.ui.screens.feed.reinvented.after.EyesOnNearSection
@@ -146,6 +148,12 @@ private fun LoadedRows(
         item(key = "top") { top?.invoke() }
         // Eyes on near you (CONTRACT 8f): only once the Ask chip is picked, never beside what opens the tab.
         if (state.chip == ASK_CHIP) item(key = "eyesOn") { EyesOnNearSection(actions.viewer) }
+        // Places you follow (phase 4, `feed/living/LivingPlaces.kt`), at the top of Explore only.
+        if (state.reach == ReinventedPulseViewModel.EXPLORE) {
+            item(key = "followed") { LivingFollowedPlaces(state.followed, actions.onRefresh, actions.onOpenMoment) }
+        }
+        // Windows (phase 4, `feed/living/LivingWindows.kt`), at the top of Close circle only.
+        if (state.reach == ReinventedPulseViewModel.CLOSE) item(key = "windows") { LivingWindowsRow() }
         if (state.items.isEmpty()) item(key = "empty") { EmptyNote(state.reach) }
         items(rows, key = { it.key }) { row ->
             when (row) {

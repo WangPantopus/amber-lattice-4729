@@ -96,7 +96,9 @@ internal fun MomentsComposeUiState.offersBeforeAfter(photosWaiting: Int): Boolea
 
 /** The Studio's playable items as they go out (CONTRACT 7b, 7g); null (left out) when there are none. */
 internal val MomentsComposeUiState.sentPlay: List<MomentPlayItemDto>?
-    get() = studioPair?.let { listOf(MomentPlayItemDto.beforeAfter(it.beforeWords, it.afterWords)) }
+    get() =
+        (listOfNotNull(studioPair?.let { MomentPlayItemDto.beforeAfter(it.beforeWords, it.afterWords) }) + sentItems)
+            .takeIf { it.isNotEmpty() }
 
 /** The Studio's picture while a pair holds: the halves one over the other, with the curtain. */
 @Composable
