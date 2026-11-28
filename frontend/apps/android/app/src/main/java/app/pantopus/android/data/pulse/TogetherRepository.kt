@@ -5,6 +5,7 @@ import app.pantopus.android.data.api.models.reinvented.ConvergenceDto
 import app.pantopus.android.data.api.models.reinvented.CrowdDto
 import app.pantopus.android.data.api.models.reinvented.EyesOnAskDto
 import app.pantopus.android.data.api.models.reinvented.EyesOnNearBody
+import app.pantopus.android.data.api.models.reinvented.MailItEnclosedDto
 import app.pantopus.android.data.api.models.reinvented.MomentPinDto
 import app.pantopus.android.data.api.models.reinvented.MomentPinReactionBody
 import app.pantopus.android.data.api.models.reinvented.MomentRepliesResponse
@@ -13,8 +14,11 @@ import app.pantopus.android.data.api.models.reinvented.MomentReplyBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyDto
 import app.pantopus.android.data.api.models.reinvented.MomentReplyReportBody
 import app.pantopus.android.data.api.models.reinvented.PinboardDto
+import app.pantopus.android.data.api.models.reinvented.RelicDto
 import app.pantopus.android.data.api.models.reinvented.RetakeDto
+import app.pantopus.android.data.api.models.reinvented.SealPlaceBody
 import app.pantopus.android.data.api.models.reinvented.SkyStripDayDto
+import app.pantopus.android.data.api.models.reinvented.TownFilmDto
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.safeApiCall
 import app.pantopus.android.data.api.services.TogetherApi
@@ -94,6 +98,31 @@ class TogetherRepository
 
         /** CONTRACT 8i: the scene around a Moment from every phone, or null where fewer than three caught it. */
         suspend fun crowd(id: String): NetworkResult<CrowdDto?> = guarded { api.crowd(id).crowd }
+
+        /** CONTRACT 8g: place relics near the reader. */
+        suspend fun relicsNear(
+            latitude: Double,
+            longitude: Double,
+        ): NetworkResult<List<RelicDto>> = guarded { api.sealsNear(SealPlaceBody(latitude, longitude)).relics }
+
+        /** CONTRACT 8g: a place relic, whole for a reader standing where it was left. */
+        suspend fun openRelic(
+            id: String,
+            latitude: Double,
+            longitude: Double,
+        ): NetworkResult<MomentDto> = guarded { api.openSeal(id, SealPlaceBody(latitude, longitude)).moment }
+
+        /** CONTRACT 8j: the sender's own Moment's picture, kept as one of their mail enclosures. */
+        suspend fun mailItEnclosure(id: String): NetworkResult<MailItEnclosedDto> = guarded { api.mailItEnclosure(id, emptyMap()) }
+
+        /** CONTRACT 8j: today's letter, written by "Mail it". */
+        suspend fun sendLetter(body: Map<String, Any?>): NetworkResult<Unit> = guarded { api.sendLetter(body).close() }
+
+        /** CONTRACT 8k: tonight's film where the reader is, or null where the town hasn't enough. */
+        suspend fun townFilm(
+            latitude: Double,
+            longitude: Double,
+        ): NetworkResult<TownFilmDto?> = guarded { api.townFilm(SealPlaceBody(latitude, longitude)).film }
 
         /** CONTRACT 8: a Moment made in the Studio with phase 3's keys ([TogetherCreate]). */
         suspend fun createMoment(body: Map<String, Any?>): NetworkResult<MomentDto> = guarded { api.createMoment(body).moment }
