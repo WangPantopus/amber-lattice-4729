@@ -16,16 +16,19 @@ public struct MomentTogetherDTO: Sendable, Hashable {
     /// Posted under a made-up name (`author.kind` "pen_name", which `MomentAuthorDTO` reads as a person): such a Moment
     /// takes no replies people can see, no pins and no sound.
     public let underPenName: Bool
+    /// The Retake this Moment starts or is a frame of (CONTRACT 8e): nil with the switch off.
+    let retake: MomentRetakeDTO?
 
     init(from decoder: any Decoder) {
         let c = try? decoder.container(keyedBy: Keys.self)
         replies = try? c?.decodeIfPresent(MomentRepliesDTO.self, forKey: .replies)
         let author = try? c?.nestedContainer(keyedBy: AuthorKeys.self, forKey: .author)
         underPenName = (try? author?.decodeIfPresent(String.self, forKey: .kind)) == "pen_name"
+        retake = try? c?.decodeIfPresent(MomentRetakeDTO.self, forKey: .retake)
     }
 
     private enum Keys: String, CodingKey {
-        case replies, author
+        case replies, author, retake
     }
 
     private enum AuthorKeys: String, CodingKey {

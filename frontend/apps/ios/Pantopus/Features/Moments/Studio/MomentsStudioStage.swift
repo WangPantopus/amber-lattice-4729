@@ -119,6 +119,7 @@ struct MomentsStudioStage: View {
                 MomentsStudioPicture(model: model)
                     .overlay { legibility }
                     .clipped()
+                TogetherStudioGhost(model: model) // Phase 3 (CONTRACT 8): a Retake's first picture to line up with.
                 // Cutouts (step 4): a long press lifts one; under the stamps.
                 MomentsStudioCutoutLayer(model: model)
                 // The stamps sit on the picture, under the X, the tools, the caption and the bar.

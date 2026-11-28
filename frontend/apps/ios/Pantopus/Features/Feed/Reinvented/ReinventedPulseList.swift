@@ -112,7 +112,8 @@ struct ReinventedPulseList: View {
     /// A Moment its author kept: a post that stays, in the bordered look, under "Kept · stays".
     private func keptCard(_ moment: MomentDTO) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
-            Text("Kept · stays")
+            // A Retake's row (CONTRACT 8e) says so; it opens the whole Retake.
+            Text(moment.together.retake?.tag ?? "Kept · stays")
                 .font(.system(size: 12.5, weight: .bold))
                 .foregroundStyle(Theme.Color.primaryTint)
                 .padding(.horizontal, Spacing.s4)

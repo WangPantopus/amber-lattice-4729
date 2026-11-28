@@ -23,6 +23,8 @@ final class ReinventedStudioPresenter {
     func close() {
         composing = nil
         closings += 1
+        // What phase 3 chose in the Studio, or opened it for, goes with it.
+        TogetherStudio.shared.reset()
     }
 }
 
