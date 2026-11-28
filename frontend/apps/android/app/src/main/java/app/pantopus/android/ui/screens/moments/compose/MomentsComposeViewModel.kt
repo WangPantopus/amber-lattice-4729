@@ -53,6 +53,7 @@ import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
 import app.pantopus.android.ui.screens.moments.map.metersBetween
 import app.pantopus.android.ui.screens.moments.studio.StudioMention
+import app.pantopus.android.ui.screens.moments.studio.holdsStudioChoices
 import app.pantopus.android.ui.screens.moments.studio.sentGuess
 import app.pantopus.android.ui.screens.moments.studio.sentMentions
 import app.pantopus.android.ui.screens.moments.studio.sentStamps
@@ -1056,11 +1057,7 @@ class MomentsComposeViewModel
          */
         fun leaveStudio() =
             _state.update {
-                if (it.stamps.isEmpty() && !it.madeUp && !it.guess && it.mentions.isEmpty()) {
-                    it
-                } else {
-                    it.copy(stamps = emptyList(), madeUp = false, guess = false, mentions = emptyList())
-                }
+                if (!it.holdsStudioChoices) it else it.copy(stamps = emptyList(), madeUp = false, guess = false, mentions = emptyList())
             }
 
         /** The Sky's rows (`MomentsComposeSky.kt`). */

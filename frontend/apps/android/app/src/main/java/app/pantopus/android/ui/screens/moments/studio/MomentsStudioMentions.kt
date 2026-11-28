@@ -197,3 +197,10 @@ internal fun StudioMentionRow(
         }
     }
 }
+
+/**
+ * What only the Studio sets on the Moment being made is still there (stamps, the made-up name, a guess, mentions):
+ * today's Post screen lets them go when it takes the Moment back (the view model's `leaveStudio`).
+ */
+internal val MomentsComposeUiState.holdsStudioChoices: Boolean
+    get() = stamps.isNotEmpty() || madeUp || guess || mentions.isNotEmpty()
