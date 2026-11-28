@@ -94,18 +94,39 @@ const LOOK_UNAVAILABLE = 'Pantopus can’t show how your card will look yet. You
  * The server can't show the look: it has no Look it over yet (a 404 without the server's code, as a server from before
  * it answers). Sending still works there.
  */
-/** A card's own photo and voice go only with a bought stamp (founder 2026-11-11): 'ready', 'buy' or 'unavailable'. */
+/** A card's own photo and voice go with a bought stamp once the free allowance (default 2) is used. */
 type MediaStamp = 'ready' | 'buy' | 'unavailable';
 const MEDIA_NEEDS_STAMP = 'Free stamps send your card and note. A photo or voice greeting needs a bought stamp.';
+function mediaNeedsStampText(freeAllowance?: { limit: number; remaining: number } | null): string {
+  if (freeAllowance && freeAllowance.limit > 0 && freeAllowance.remaining === 0) {
+    return `You’ve used your ${freeAllowance.limit} free photo or voice cards. Adding more uses a bought stamp.`;
+  }
+  return MEDIA_NEEDS_STAMP;
+}
+function freeMediaHintText(
+  freeAllowance: { limit: number; remaining: number } | null | undefined,
+  paidRemaining: number,
+  listCount: number,
+): string | null {
+  if (!freeAllowance || freeAllowance.limit <= 0 || freeAllowance.remaining <= 0 || paidRemaining > 0) return null;
+  if (listCount > freeAllowance.remaining) {
+    const paid = listCount - freeAllowance.remaining;
+    return `You have ${freeAllowance.remaining} free photo or voice ${freeAllowance.remaining === 1 ? 'card' : 'cards'} left. This list of ${listCount} will need ${paid} bought ${paid === 1 ? 'stamp' : 'stamps'}.`;
+  }
+  if (freeAllowance.remaining === freeAllowance.limit) {
+    return `Your first ${freeAllowance.limit} cards with a photo or voice greeting are free.`;
+  }
+  return `${freeAllowance.remaining} free photo or voice ${freeAllowance.remaining === 1 ? 'card' : 'cards'} left — after that, they use a bought stamp.`;
+}
 
 /**
  * Where a card's own photo and voice stand: the server's word when the cards loaded, followed by the live stamp balance
  * (refreshed when the page comes back from checkout), so buying a book makes them work without leaving the step. Null:
  * an older server that doesn't ask for a bought stamp.
  */
-function mediaStampOf(server: { state: MediaStamp } | null | undefined,
-  live: { paid_remaining: number; sales_open?: boolean } | null | undefined): MediaStamp | null {
-  if (!server) return null;
+function mediaStampOf(server: { required?: boolean; state: MediaStamp } | null | undefined,
+  live: { paid_remaining: number; sales_open?: boolean } | null | undefined, improved = false): MediaStamp | null {
+  if (!server || (improved && server.required === false)) return null;
   if (!live) return server.state;
   if (live.paid_remaining >= 1) return 'ready';
   return live.sales_open === false ? 'unavailable' : 'buy';
@@ -222,16 +243,31 @@ function envelopeName(to: Recipient): string {
   return to.kind === 'link' ? 'Their name' : toName(to);
 }
 
-/** How a sent card arrives, in a sentence. */
-export function arrivalLine(card: SentHolidayCard): string {
+/**
+ * How a sent card arrives, in a sentence. `improved`: GET /cards says the card improvements of November 28 are on
+ * (a link or an email opens before signing up); without it, the words from before them.
+ */
+export function arrivalLine(card: SentHolidayCard, improved = false): string {
   const who = card.to_name || 'They';
   if (card.status === 'withdrawn') return 'You took this card back.';
   if (card.by_link) {
     if (card.status === 'claimed') return `${who} opened your link and has your card.`;
     if (card.status === 'expired') return 'Nobody opened your link in 90 days.';
+    if (!improved) {
+      return card.arrival === 'sealed_christmas'
+        ? 'It waits for someone to open your link and join. Then it’s in their mailbox and opens on Christmas morning.'
+        : 'It waits for someone to open your link and join.';
+    }
     return card.arrival === 'sealed_christmas'
       ? 'Ready to share. It stays sealed until Christmas morning, and anyone with your link can save it to their mailbox.'
       : 'Ready to share. Anyone with your link can open and read it right away, and save it to keep it.';
+  }
+  if (card.by_email && !improved) {
+    if (card.status === 'claimed') return `${who} joined Pantopus and has your card.`;
+    if (card.email_send_at) return `We’ll email them ${emailGoesAt(card.email_send_at)}, your time. Once they join with that address, it waits in their mailbox.`;
+    return card.arrival === 'sealed_christmas'
+      ? 'We emailed them. Once they join with that address, it waits in their mailbox and opens on Christmas morning.'
+      : 'We emailed them. It waits for them to join with that address and open it.';
   }
   if (card.by_email) {
     if (card.status === 'claimed') return `${who} saved your card to their Pantopus mailbox.`;
@@ -347,6 +383,8 @@ export function ToStep({
   const chosen = new Set(listed.map(entryKey));
   const full = listed.length >= max;
   const m = onPaper ? 'text-[#4e5563]' : muted;
+  // The card improvements of November 28 (GET /cards `improved`): the words for opening before signing up.
+  const improved = Boolean(useHolidayCards().data?.improved);
 
   // A list: the people and addresses on it, each taken off with its ×, and the button on to the next step.
   const list = many ? (
@@ -423,8 +461,17 @@ export function ToStep({
           className="mt-2 h-12 w-full rounded-xl border border-[#d6cbb6] bg-[#fffdf8] px-4 text-[16px] text-[#111827] focus:border-[#8b1d1d] focus:outline-none focus:ring-2 focus:ring-[#8b1d1d]/30"
         />
         <p className={`mt-2 text-[14px] leading-5 ${m}`}>
-          They get an email saying you sent them a Christmas card. They can open and read it right away — no account
-          needed — and join free anytime to keep it or write back. The email never shows your note.
+          {improved ? (
+            <>
+              They get an email saying you sent them a Christmas card. They can open and read it right away — no account
+              needed — and join free anytime to keep it or write back. The email never shows your note.
+            </>
+          ) : (
+            <>
+              They get an email saying you sent them a Christmas card. They join Pantopus with this address to open it. The
+              email never shows your note.
+            </>
+          )}
         </p>
         <button type="submit" data-testid="sendCardEmailDone" disabled={!emailOk || (many && full)} className={`${primary} mt-5`} style={{ backgroundColor: WAX }}>
           {many ? 'Add to the list' : 'Continue'}
@@ -501,7 +548,9 @@ export function ToStep({
       </div>
       {/* Sending to someone not on Pantopus already invites them (design plan 11.6): said once, above both ways. */}
       {launchFeatures.cardTable ? (
-        <p data-testid="sendCardInviteLine" className={`mt-5 text-center text-[14px] leading-5 ${m}`}>They don&rsquo;t need Pantopus. They can open and read it right away.</p>
+        <p data-testid="sendCardInviteLine" className={`mt-5 text-center text-[14px] leading-5 ${m}`}>
+          {improved ? <>They don&rsquo;t need Pantopus. They can open and read it right away.</> : <>They don&rsquo;t need Pantopus yet. They join to open it.</>}
+        </p>
       ) : null}
       <button
         type="button"
@@ -526,7 +575,7 @@ export function ToStep({
             <Link2 className="h-[18px] w-[18px]" aria-hidden />
             Send it by link
           </button>
-          <p className={`mx-auto mt-0.5 max-w-[340px] text-[13px] leading-[18px] ${m}`}>Text it, or paste it anywhere. They can open it right away, and save it to keep it.</p>
+          <p className={`mx-auto mt-0.5 max-w-[340px] text-[13px] leading-[18px] ${m}`}>{improved ? 'Text it, or paste it anywhere. They can open it right away, and save it to keep it.' : 'Text it, or paste it anywhere. The first person to open it keeps the card.'}</p>
         </div>
       ) : null}
     </div>
@@ -934,6 +983,8 @@ function WriteStep({
   onRemoveVoice,
   onRetryVoice,
   mediaStamp = null,
+  mediaNeedsStampLine = MEDIA_NEEDS_STAMP,
+  freeMediaHint = null,
   onGetStamps,
   noteHelp = null,
   onCloth = false,
@@ -978,6 +1029,8 @@ function WriteStep({
   onRetryVoice?: () => void;
   /** 'buy': no bought stamp left, so the photo and voice buttons open the stamp books (founder 2026-11-11). */
   mediaStamp?: MediaStamp | null;
+  mediaNeedsStampLine?: string;
+  freeMediaHint?: string | null;
   onGetStamps?: () => void;
   /**
    * "Help me write it" (GET /cards `note_help`, launch key card_note_help): the first names the card is to and how
@@ -1196,7 +1249,8 @@ function WriteStep({
               </div>
             </div>
           )}
-          {needsStamp ? <p className={`mt-3 text-[13px] ${quiet}`} data-testid="sendCardMediaNeedsStamp">{MEDIA_NEEDS_STAMP}</p> : null}
+          {needsStamp ? <p className={`mt-3 text-[13px] ${quiet}`} data-testid="sendCardMediaNeedsStamp">{mediaNeedsStampLine}</p> : null}
+          {!needsStamp && freeMediaHint ? <p className={`mt-3 text-[13px] ${quiet}`} data-testid="sendCardMediaFreeHint">{freeMediaHint}</p> : null}
           {recorder.refused ? <p role="alert" className={`mt-3 text-[13px] ${quiet}`} data-testid="sendCardMicRefused">{recorder.refused}</p> : null}
           {photo ? (
             <label className={`mt-3 block text-[13px] ${quiet}`}>
@@ -1233,12 +1287,15 @@ function arrivalChoice(
   theirDay: string | null,
 ): { title: string; detail: string } {
   if (to.kind === 'list') return listArrivalChoice(arrival, cards, to.entries);
+  // The card improvements of November 28 (a link or an email opens before signing up); without them, the words before.
+  const improved = Boolean(cards.improved);
+  const opensWhen = improved ? 'They can open and read it right in their browser.' : 'They can open it once they join with that address.';
   // By email, its email goes at your next 7 a.m. or on Christmas morning (the other person's clock isn't known).
   if (to.kind === 'email' && arrival === 'next_morning') {
-    return { title: 'With the morning mail', detail: `We email them ${emailGoesAt(cards.next_round_at)}, your time. They can open and read it right in their browser.` };
+    return { title: 'With the morning mail', detail: `We email them ${emailGoesAt(cards.next_round_at)}, your time. ${opensWhen}` };
   }
   if (to.kind === 'email' && arrival === 'christmas_morning') {
-    return { title: 'On Christmas morning', detail: `We email them ${emailGoesAt(cards.christmas_morning_at)}, your time. They can open and read it right in their browser.` };
+    return { title: 'On Christmas morning', detail: `We email them ${emailGoesAt(cards.christmas_morning_at)}, your time. ${opensWhen}` };
   }
   const day = shortDay(theirDay ?? cards.next_round_at);
   const name = to.kind === 'person' ? firstName(to.name) : 'they';
@@ -1249,16 +1306,22 @@ function arrivalChoice(
       return {
         title: 'Sealed until Christmas',
         detail: to.kind === 'link'
-          ? 'It waits with a “Do not open until Christmas” seal and opens on December 25. They can save it to their mailbox anytime.'
+          ? improved
+            ? 'It waits with a “Do not open until Christmas” seal and opens on December 25. They can save it to their mailbox anytime.'
+            : 'Whoever opens your link and joins gets it now, with a “Do not open until Christmas” seal. It opens on December 25.'
           : to.kind === 'email'
-          ? 'They get an email now with a “Do not open until Christmas” seal, and a reminder on Christmas morning when it opens.'
+          ? improved
+            ? 'They get an email now with a “Do not open until Christmas” seal, and a reminder on Christmas morning when it opens.'
+            : 'They get an email now. Once they join with that address, it waits in their mailbox with a “Do not open until Christmas” seal. It opens on December 25.'
           : `It comes with the ${day} morning mail and waits in their mailbox with a “Do not open until Christmas” seal. It opens on December 25.`,
       };
     case 'christmas_morning':
       return { title: 'On Christmas morning', detail: `${shortDay(cards.christmas_morning_at)}, with the 7 a.m. mail.` };
     default:
-      if (to.kind === 'link') return { title: 'Right away', detail: 'Whoever opens your link can open and read the card right away — no account needed.' };
-      return { title: 'Right away, by email', detail: 'They get an email now and can open and read it right in their browser — no account needed.' };
+      if (to.kind === 'link') {
+        return { title: 'Right away', detail: improved ? 'Whoever opens your link can open and read the card right away — no account needed.' : 'Whoever opens your link can open the card as soon as they join.' };
+      }
+      return { title: 'Right away, by email', detail: improved ? 'They get an email now and can open and read it right in their browser — no account needed.' : 'They get an email now and can open it once they join with that address.' };
   }
 }
 
@@ -1469,7 +1532,10 @@ function LookStep({
   onSealOnTable,
   onCloth = false,
   fade = PAGE_FADE,
+  improved = false,
 }: {
+  /** GET /cards `improved`: the card improvements of November 28 are on. */
+  improved?: boolean;
   preview: HolidayCardPreview;
   to: Recipient;
   sending: boolean;
@@ -1489,7 +1555,7 @@ function LookStep({
   const needsStamps = stamps?.balance?.available === 0;
   return (
     <div data-testid="sendCardLook">
-      <LookItOver onCloth={onCloth} preview={preview} toName={envelopeName(to)} toFirstName={to.kind === 'person' ? firstName(to.name) : ''} byEmail={to.kind !== 'person'} byLink={to.kind === 'link'} />
+      <LookItOver onCloth={onCloth} preview={preview} toName={envelopeName(to)} toFirstName={to.kind === 'person' ? firstName(to.name) : ''} byEmail={to.kind !== 'person'} byLink={to.kind === 'link'} improved={improved} />
       {/* The take-back and postage lines end the page and scroll with it (5.2); they were on Seal it for the day too. */}
       <div className="mx-auto mt-7 max-w-[420px] px-4">
         <p className="rounded-xl border border-[#e7dcc6] bg-[#fbf6ec] px-3.5 py-3 text-[13px] leading-[18px] text-[#374151]">
@@ -1584,7 +1650,10 @@ function ListLookStep({
   onSealOnTable,
   onCloth = false,
   fade = PAGE_FADE,
+  improved = false,
 }: {
+  /** GET /cards `improved`: the card improvements of November 28 are on. */
+  improved?: boolean;
   look: HolidayCardListPreview;
   entries: ListEntry[];
   idOf: (entry: ListEntry) => string;
@@ -1609,7 +1678,7 @@ function ListLookStep({
   return (
     <div data-testid="sendCardLook">
       {look.piece && first ? (
-        <LookItOver onCloth={onCloth} preview={look as HolidayCardPreview} toName={entryName(first)} toFirstName={first.kind === 'person' ? firstName(first.name) : ''} byEmail={first.kind !== 'person'} />
+        <LookItOver onCloth={onCloth} preview={look as HolidayCardPreview} toName={entryName(first)} toFirstName={first.kind === 'person' ? firstName(first.name) : ''} byEmail={first.kind !== 'person'} improved={improved} />
       ) : null}
       <div className="mx-auto mt-7 max-w-[420px] px-4">
         <section aria-label="Who it’s going to" data-testid="sendCardListLook">
@@ -1661,7 +1730,11 @@ function SentList({
   onSendRest,
   sendingRest,
   restError,
+  improved = false,
 }: {
+  /** GET /cards `improved`: the card improvements of November 28 are on. */
+  improved?: boolean;
+
   results: HolidayCardListResult[];
   entries: ListEntry[];
   idOf: (entry: ListEntry) => string;
@@ -1696,7 +1769,7 @@ function SentList({
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-semibold">To {card.to_name || 'them'}</p>
                 <p className="mt-0.5 text-[13px] leading-[18px] text-[#374151]">
-                  {back ? 'You took this card back, and its stamp is back with you.' : arrivalLine(card)}
+                  {back ? 'You took this card back, and its stamp is back with you.' : arrivalLine(card, improved)}
                 </p>
                 {takeBackError?.id === card.id ? <p role="alert" className="mt-1 text-[13px] font-medium text-[#a81a1a]">{takeBackError.message}</p> : null}
                 {card.can_take_back && !back ? (
@@ -1768,7 +1841,10 @@ function SentCard({
   onTakeBack,
   takingBack,
   takeBackError,
+  improved = false,
 }: {
+  /** GET /cards `improved`: the card improvements of November 28 are on. */
+  improved?: boolean;
   card: SentHolidayCard;
   designs: HolidayCardDesign[];
   title: string;
@@ -1795,7 +1871,7 @@ function SentCard({
         <div className="min-w-0">
           <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-[#4e5563]">{title}</p>
           <p className="mt-0.5 truncate text-[17px] font-semibold">{card.by_link && card.status !== 'claimed' ? 'To whoever opens your link' : `To ${card.to_name || 'them'}`}</p>
-          <p className="mt-1 text-[14px] leading-5 text-[#374151]">{arrivalLine(card)}</p>
+          <p className="mt-1 text-[14px] leading-5 text-[#374151]">{arrivalLine(card, improved)}</p>
           {card.travel ? <p className="mt-1 text-[14px] leading-5 text-[#374151]" data-testid="sendCardTravelSent">{TRAVEL_SENT_LINE}</p> : null}
         </div>
       </div>
@@ -1915,6 +1991,8 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
   sealingOpen.current = Boolean(sealing);
 
   const data = cards.data;
+  // The card improvements of November 28 (contract section 1): only while this read says so; never kept beyond it.
+  const improved = Boolean(data?.improved);
   const travelOffer = data?.travel ?? null;
   const travelling = Boolean(travelOffer) && travel;
   // Runs `then` now, or once they've given their town (asked only while it travels and they have none).
@@ -1926,7 +2004,22 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
   const savedSignature = launchFeatures.cardTable ? data?.signature?.saved ?? null : null;
   const max = data?.max_recipients ?? 1;
   const stamps = useStamps(Boolean(data?.postage_enabled), `${sent?.id ?? ''}:${listSent?.length ?? 0}:${listTakenBack.size}:${tookBack}:${step}`);
-  const mediaStamp = mediaStampOf(data?.media?.bought_stamp, data?.postage_enabled ? stamps.balance : null);
+  // Wave 2 (only while `improved`): the first photo or voice cards are free (`media.free_allowance`; the server leaves
+  // `bought_stamp` out while some are left). The "free" line shows only to a sender with at least one stamp of any kind
+  // (contract fix 4); with no stamps at all, the photo and voice buttons open the stamp books with the line from before.
+  const freeMediaAllowance = improved ? data?.media?.free_allowance ?? null : null;
+  const stampsLeft = data?.postage_enabled ? stamps.balance?.available ?? data?.stamps?.available ?? null : null;
+  const noStampsAtAll = Boolean(freeMediaAllowance) && stampsLeft === 0 && !data?.media?.bought_stamp;
+  const mediaStamp: MediaStamp | null = noStampsAtAll
+    ? stamps.balance?.sales_open === false ? 'unavailable' : 'buy'
+    : mediaStampOf(data?.media?.bought_stamp, data?.postage_enabled ? stamps.balance : null, improved);
+  const mediaNeedsStampLine = noStampsAtAll ? MEDIA_NEEDS_STAMP : mediaNeedsStampText(freeMediaAllowance);
+  const paidRemaining = stamps.balance?.paid_remaining ?? data?.stamps?.paid_remaining ?? 0;
+  const freeMediaHint = noStampsAtAll ? null : freeMediaHintText(freeMediaAllowance, paidRemaining, to?.kind === 'list' ? to.entries.length : 1);
+  // After a send or a take-back the free allowance may have moved: read GET /cards again (only while `improved`).
+  const refreshCards = () => { if (improved) void cards.refetch(); };
+  // Why the stamp books opened for a photo or voice: the server's words while `improved`, else the line from before.
+  const mediaStampReason = (error: { message?: string }) => (improved ? error.message || mediaNeedsStampLine : MEDIA_NEEDS_STAMP);
   const design = useMemo(() => data?.designs.find((d) => d.id === designId) ?? null, [data, designId]);
   // "Pick a card" as shelves (server key card_shelves, card shelves SPEC Part C): null for today's screen. A collection's
   // page opens inside step 2 with its own entry in the browser's history (?collection=<slug>), so the browser's Back
@@ -2116,6 +2209,9 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
         request_id: listId(entry),
       })),
       ...(signature ? { signature } : {}),
+      // A list's photo and voice go only while `improved` (Wave 2); before it a list went without.
+      ...(improved && photoReady ? { photo: photoReady.file_id, ...(photoAlt.trim() ? { photo_alt: photoAlt.trim() } : {}) } : {}),
+      ...(improved && voiceReady ? { voice: voiceReady.file_id } : {}),
       // Each address keeps the list's choice where the server offers every email choice.
       ...(data?.arrivals.email_all ? { emails_keep_arrival: true } : {}),
       ...(travelling ? { travel: true } : {}),
@@ -2218,8 +2314,20 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
       setSealError(null);
       previewList.mutate(list, {
         onSuccess: (res) => { setListLook(res); setListError(null); setStep('look'); },
-        // A refusal of the whole list (the season closed, say) shows under the choices.
-        onError: (error) => setSealError(sendMessage(error)),
+        // A refusal of the whole list (the season closed, or bought stamps needed for media) shows under the choices.
+        onError: (error) => {
+          if (improved && error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
+            const reason = mediaStampReason(error);
+            setSealError(reason);
+            void stamps.refresh();
+            refreshCards();
+            setStampShort(null);
+            setStampReason(reason);
+            setStampSheet(true);
+            return;
+          }
+          setSealError(sendMessage(error));
+        },
       });
       return;
     }
@@ -2238,7 +2346,13 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
         if (error.serverCode === 'CARD_TRAVEL_NEEDS_TOWN') { preview.reset(); setTownFor({ then: doLook }); return; }
         if (lookIsUnavailable(error)) setLookUnavailable(true);
         // Its photo or voice needs a bought stamp: the stamp books open; step 4 says why, and the card stays as it is.
-        if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') { void stamps.refresh(); setStampShort(null); setStampReason(MEDIA_NEEDS_STAMP); setStampSheet(true); }
+        if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
+          void stamps.refresh();
+          refreshCards();
+          setStampShort(null);
+          setStampReason(mediaStampReason(error));
+          setStampSheet(true);
+        }
       },
     });
   };
@@ -2280,7 +2394,19 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           if (everyOneGoes && enoughStamps && launchFeatures.cardTable) openSealing(res.piece ?? null);
           else setStep('look');
         },
-        onError: (error) => setSealError(sendMessage(error)),
+        onError: (error) => {
+          if (improved && error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
+            const reason = mediaStampReason(error);
+            setSealError(reason);
+            void stamps.refresh();
+            refreshCards();
+            setStampShort(null);
+            setStampReason(reason);
+            setStampSheet(true);
+            return;
+          }
+          setSealError(sendMessage(error));
+        },
       });
       return;
     }
@@ -2304,7 +2430,13 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           if (launchFeatures.cardTable) openSealing(null);
           return;
         }
-        if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') { void stamps.refresh(); setStampShort(null); setStampReason(MEDIA_NEEDS_STAMP); setStampSheet(true); }
+        if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
+          void stamps.refresh();
+          refreshCards();
+          setStampShort(null);
+          setStampReason(mediaStampReason(error));
+          setStampSheet(true);
+        }
       },
     });
   };
@@ -2316,7 +2448,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
     const fromSeal = step === 'seal';
     setSealError(null);
     send.mutate(card, {
-      onSuccess: (res) => { requestId.current = null; setSent(res.card); setSentLink(res.link ?? null); setLook(null); setStep('sent'); },
+      onSuccess: (res) => { requestId.current = null; setSent(res.card); setSentLink(res.link ?? null); setLook(null); setStep('sent'); refreshCards(); },
       onError: (error) => {
         if (wentEarlier(error)) return;
         // The stamps ran out meanwhile (another tab or phone sent a card): the stamp books open; the card stays as it is.
@@ -2328,11 +2460,12 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
         }
         // Its photo or voice needs a bought stamp and none is left: the same, and step 4 says why.
         if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
-          setSealError(error.message || MEDIA_NEEDS_STAMP);
+          setSealError(error.message || mediaNeedsStampLine);
           send.reset();
           void stamps.refresh();
+          refreshCards();
           setStampShort(null);
-          setStampReason(MEDIA_NEEDS_STAMP);
+          setStampReason(mediaStampReason(error));
           setStampSheet(true);
           return;
         }
@@ -2345,7 +2478,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
         send.reset();
         setLook(null);
         setStep('seal');
-        void cards.refetch();
+        refreshCards();
         if (to?.kind === 'person') void theirs.refetch();
       },
     });
@@ -2359,13 +2492,23 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
     if (!list) return;
     setListError(null);
     sendList.mutate(list, {
-      onSuccess: (res) => { setListSent(res.results); setListLook(null); setStep('sent'); },
+      onSuccess: (res) => { setListSent(res.results); setListLook(null); setStep('sent'); refreshCards(); },
       onError: (error) => {
         if (error.serverCode === 'STAMPS_REQUIRED') {
           const needed = Number(error.data?.needed) || list.recipients.length;
           const have = Number(error.data?.available) || 0;
           setStampShort({ cards: needed, missing: Math.max(1, needed - have) });
           void stamps.refresh();
+          setStampSheet(true);
+          return;
+        }
+        if (improved && error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
+          const reason = mediaStampReason(error);
+          setListError(reason);
+          void stamps.refresh();
+          refreshCards();
+          setStampShort(null);
+          setStampReason(reason);
           setStampSheet(true);
           return;
         }
@@ -2381,7 +2524,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
     setListTakeBackError(null);
     setListTakingBack(card.id);
     takeBack.mutate(card.id, {
-      onSuccess: () => setListTakenBack((now) => new Set(now).add(card.id)),
+      onSuccess: () => { setListTakenBack((now) => new Set(now).add(card.id)); refreshCards(); },
       onError: (error) => setListTakeBackError({ id: card.id, message: sendMessage(error) }),
       onSettled: () => setListTakingBack(null),
     });
@@ -2420,6 +2563,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
       sendList.mutate(list, {
         onSuccess: (res) => {
           setListSent(res.results);
+          refreshCards();
           resolve({ ok: true });
           if (!sealingOpen.current) { setListLook(null); setStep('sent'); }
         },
@@ -2431,6 +2575,16 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
             void stamps.refresh();
             setStampSheet(true);
             refused();
+            return;
+          }
+          if (improved && error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
+            const reason = mediaStampReason(error);
+            void stamps.refresh();
+            refreshCards();
+            setStampShort(null);
+            setStampReason(reason);
+            setStampSheet(true);
+            refused(reason);
             return;
           }
           refused(sendMessage(error));
@@ -2445,6 +2599,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
         requestId.current = null;
         setSent(res.card);
         setSentLink(res.link ?? null);
+        refreshCards();
         resolve({ ok: true });
         if (!sealingOpen.current) { setLook(null); setStep('sent'); }
       },
@@ -2470,10 +2625,11 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
         if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') {
           send.reset();
           void stamps.refresh();
+          refreshCards();
           setStampShort(null);
-          setStampReason(MEDIA_NEEDS_STAMP);
+          setStampReason(mediaStampReason(error));
           setStampSheet(true);
-          refused(error.message || MEDIA_NEEDS_STAMP);
+          refused(error.message || mediaNeedsStampLine);
           return;
         }
         if (error.serverCode === 'CARD_ARRIVAL_CLOSED') {
@@ -2484,7 +2640,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           send.reset();
           setLook(null);
           setStep('seal');
-          void cards.refetch();
+          refreshCards();
           if (to?.kind === 'person') void theirs.refetch();
           return;
         }
@@ -2531,6 +2687,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
       onSuccess: () => {
         setTookBack(true);
         setTakenBackNote(null);
+        refreshCards();
         startOver();
       },
       onError: (error) => setTakeBackError(sendMessage(error)),
@@ -2559,7 +2716,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
       <div className={page}>
         <div className="mx-auto w-full max-w-[560px]">
           <StepHeader step="sent" title="Today's card" onBack={() => router.push('/app/mailbox/personal')} headingRef={headingRef} />
-          <SentCard card={today} designs={data.designs} title="Today's card" fromName={fromName} onTakeBack={() => { void doTakeBack(); }} takingBack={takeBack.isPending} takeBackError={takeBackError} />
+          <SentCard card={today} designs={data.designs} title="Today's card" fromName={fromName} onTakeBack={() => { void doTakeBack(); }} takingBack={takeBack.isPending} takeBackError={takeBackError} improved={improved} />
         </div>
       </div>
     );
@@ -2648,18 +2805,20 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
             onKeep: async (signed) => { await saveSignature.mutateAsync(signed); },
             onForget: async () => { await forgetSignature.mutateAsync(); },
           } : null}
-          // A card's own photo (memories plan step 4): one card to one person; a list goes without.
-          canAddPhoto={launchFeatures.holidayCardMemories && Boolean(data.media?.photo.usable) && to?.kind !== 'list' && mediaStamp !== 'unavailable'}
+          // A card's own photo (memories plan step 4): one card to one person, and while `improved` a list too (Wave 2).
+          canAddPhoto={launchFeatures.holidayCardMemories && Boolean(data.media?.photo.usable) && (improved || to?.kind !== 'list') && mediaStamp !== 'unavailable'}
           photo={photo}
           photoAlt={photoAlt}
           onPhotoAlt={setPhotoAlt}
           onAddPhoto={uploadPhoto}
           onRemovePhoto={removePhoto}
           onRetryPhoto={() => { if (photo?.file) uploadPhoto(photo.file); }}
-          // Its own voice greeting (memories plan step 7), the same way: one card to one person.
-          canAddVoice={launchFeatures.holidayCardMemories && Boolean(data.media?.voice.usable) && to?.kind !== 'list' && mediaStamp !== 'unavailable'}
+          // Its own voice greeting (memories plan step 7), the same way.
+          canAddVoice={launchFeatures.holidayCardMemories && Boolean(data.media?.voice.usable) && (improved || to?.kind !== 'list') && mediaStamp !== 'unavailable'}
           mediaStamp={mediaStamp}
-          onGetStamps={() => { setStampShort(null); setStampReason(MEDIA_NEEDS_STAMP); void stamps.refresh(); setStampSheet(true); }}
+          mediaNeedsStampLine={mediaNeedsStampLine}
+          freeMediaHint={freeMediaHint}
+          onGetStamps={() => { setStampShort(null); setStampReason(mediaNeedsStampLine); void stamps.refresh(); setStampSheet(true); }}
           voice={voice}
           greetingFor={to?.kind === 'person' ? firstName(to.name) : 'you'}
           onRecorded={uploadVoice}
@@ -2722,6 +2881,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           onSealOnTable={launchFeatures.cardTable ? () => openSealing() : undefined}
           onCloth={atTable}
           fade={atTable ? fadeOf(tableTint(design?.table), 0.72) : PAGE_FADE}
+          improved={improved}
         />
       ) : null}
       {step === 'look' && listLook && to?.kind === 'list' ? (
@@ -2742,6 +2902,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           onSealOnTable={launchFeatures.cardTable ? () => openSealing() : undefined}
           onCloth={atTable}
           fade={atTable ? fadeOf(tableTint(design?.table), 0.72) : PAGE_FADE}
+          improved={improved}
         />
       ) : null}
       </StepsAtTable>
@@ -2758,10 +2919,11 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           onSendRest={doSendList}
           sendingRest={sendList.isPending}
           restError={listError}
+          improved={improved}
         />
       ) : null}
       {step === 'sent' && sent ? (
-        <SentCard postageEnabled={data.postage_enabled} card={sent} designs={data.designs} title={sent.by_link ? 'Your card' : 'On its way'} seeInSent link={sentLink} fromName={fromName} onTakeBack={() => { void doTakeBack(); }} takingBack={takeBack.isPending} takeBackError={takeBackError} />
+        <SentCard postageEnabled={data.postage_enabled} card={sent} designs={data.designs} title={sent.by_link ? 'Your card' : 'On its way'} seeInSent link={sentLink} fromName={fromName} onTakeBack={() => { void doTakeBack(); }} takingBack={takeBack.isPending} takeBackError={takeBackError} improved={improved} />
       ) : null}
       {data.postage_enabled && step === 'sent' ? (
         <div className="mx-auto max-w-[420px] space-y-2.5 px-4 pb-4">
@@ -2810,7 +2972,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
               </>
             ) : sent ? (
               <>
-                <p>{arrivalLine(sent)}</p>
+                <p>{arrivalLine(sent, improved)}</p>
                 {sent.travel ? <p data-testid="sealTravelLine">{TRAVEL_SENT_LINE}</p> : null}
                 {sent.by_link && sentLink ? <p data-testid="sealLink" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>{sentLink}</p> : null}
                 {takeBackLine(sent) ? <p>{takeBackLine(sent)}</p> : null}
