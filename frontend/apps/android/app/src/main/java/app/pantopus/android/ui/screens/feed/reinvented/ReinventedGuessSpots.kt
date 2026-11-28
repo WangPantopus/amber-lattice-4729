@@ -37,27 +37,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.moments.MomentDailySpotDto
 import app.pantopus.android.data.api.models.moments.MomentGuessSpotDto
-import app.pantopus.android.data.api.net.NetworkResult
-import app.pantopus.android.data.pulse.ReinventedPoint
-import app.pantopus.android.data.pulse.StudioRepository
 import app.pantopus.android.ui.screens.moments.MomentOpenHolder
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Spacing
 import coil.compose.AsyncImage
-import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import javax.inject.Inject
-import kotlin.math.abs
 
 /*
  * Guess the spot on the new Pulse map (PHASE-1 piece 7 with CONTRACT 5d and 6b), as the Moments map has it
@@ -65,29 +53,6 @@ import kotlin.math.abs
  * reader may see in the area, with no point. They are a list, never marks on the map, and say no more than the town.
  * Today's spot (`GET /api/moments/daily-spot`) comes first. A row opens the Moment in the viewer, where the guess is made.
  */
-
-/** Today's spot for where the map is, read again once it moved about a kilometre. */
-@HiltViewModel
-class ReinventedGuessSpotsViewModel
-    @Inject
-    constructor(
-        private val studio: StudioRepository,
-    ) : ViewModel() {
-        private val _daily = MutableStateFlow<MomentDailySpotDto?>(null)
-        val daily: StateFlow<MomentDailySpotDto?> = _daily.asStateFlow()
-        private var readAt: ReinventedPoint? = null
-
-        fun readDaily(at: ReinventedPoint) {
-            val last = readAt
-            if (last != null && abs(last.latitude - at.latitude) < MOVED && abs(last.longitude - at.longitude) < MOVED) return
-            readAt = at
-            viewModelScope.launch { _daily.value = (studio.dailySpot(at.latitude, at.longitude) as? NetworkResult.Success)?.data }
-        }
-
-        private companion object {
-            const val MOVED = 0.01
-        }
-    }
 
 /** At the Map height, under the time row: "Guess the spot · 3", opening the list; nothing when there is none. */
 @Composable
