@@ -266,6 +266,7 @@ extension MomentsComposerModel {
 
 /// Where the canvas sits on the Studio's screen (whole, never cut: as large as fits, in the middle), and where the
 /// picture and everything on it are drawn: the picture's own box while it's whole as taken, else the canvas.
+@MainActor
 struct MomentsStudioWholeFrames {
     let canvas: CGRect
     let layers: CGRect
