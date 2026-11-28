@@ -21,9 +21,10 @@ import javax.inject.Inject
 /**
  * What the open Studio adds to the Moment it makes for "Pulse, reinvented" phase 3 ("together and back outside",
  * CONTRACT 8; iPhone's `TogetherStudio.swift`): what the Studio was opened for (a frame for someone's Retake, 8e) and the
- * person's own choices in the drawer (start a Retake, join tonight's sky, start a pinboard). Each rides the create request as one more key ([TogetherCreate]).
- * Only while the switch is on, and only for the Studio on screen: today's Post screen never shows the rows, so it never
- * sends any of this, and with nothing chosen the request is exactly today's.
+ * person's own choices in the drawer (start a Retake, join tonight's sky, start a pinboard). Each rides the create
+ * request as one more key ([TogetherCreate]). Only while the switch is on, and only for the Studio on screen: today's
+ * Post screen never shows the rows, so it never sends any of this, and with nothing chosen the request is exactly
+ * today's.
  */
 internal object TogetherStudio {
     /** What the Studio was opened for, from a screen of this build's own. */
