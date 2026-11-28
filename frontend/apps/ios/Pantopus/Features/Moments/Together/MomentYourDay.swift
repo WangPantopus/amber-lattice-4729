@@ -310,11 +310,17 @@ struct YourDayCard: View {
                                 .clipShape(RoundedRectangle(cornerRadius: Radii.md))
                                 .opacity(photo.chosen ? 1 : 0.35)
                                 if model.editing {
-                                    Image(systemName: photo.chosen ? "checkmark.circle.fill" : "circle")
-                                        .font(.system(size: 20))
-                                        .foregroundStyle(photo.chosen ? Theme.Color.primarySolid : .white)
-                                        .padding(4)
-                                        .accessibilityHidden(true)
+                                    Group {
+                                        if photo.chosen {
+                                            Icon(.check, size: 13, strokeWidth: 3, color: .white)
+                                                .frame(width: 22, height: 22)
+                                                .background(Circle().fill(Theme.Color.primarySolid))
+                                        } else {
+                                            Circle().stroke(Color.white, lineWidth: 2).frame(width: 20, height: 20)
+                                        }
+                                    }
+                                    .padding(4)
+                                    .accessibilityHidden(true)
                                 }
                             }
                             Text("\(index + 1) · \(photo.at.formatted(date: .omitted, time: .shortened))")
