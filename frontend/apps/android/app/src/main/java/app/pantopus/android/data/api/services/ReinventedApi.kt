@@ -8,6 +8,8 @@ import app.pantopus.android.data.api.models.reinvented.ReinventedKeepBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMapResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMomentPlanResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedStrandsResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedStrandsSeenBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -22,6 +24,7 @@ import retrofit2.http.Query
  * caller, each answers `403 PULSE_REINVENTED_OFF`; a server from before them answers 404. A point, where one is sent, is
  * the phone's own place, rounded to five places, as the web and iPhone send it.
  */
+@Suppress("TooManyFunctions") // The new Pulse's routes, one router on the server (`backend/routes/reinvented.js`).
 interface ReinventedApi {
     /**
      * `GET /api/reinvented/list` (CONTRACT 6a): the Moments that fade and the posts that stay a reader may see, by reach
@@ -117,6 +120,18 @@ interface ReinventedApi {
         @Query("guests") guests: String = "1",
         @Query("extras") extras: String = "1",
     ): ReinventedMomentPlanResponse
+
+    /** `GET /api/reinvented/strands` (CONTRACT 8c): "Went because of you", told to the reader only. */
+    @GET("api/reinvented/strands")
+    suspend fun strands(
+        @Query("cursor") cursor: String?,
+    ): ReinventedStrandsResponse
+
+    /** `POST /api/reinvented/strands/seen` (CONTRACT 8c): the groups' items the reader has now seen. */
+    @POST("api/reinvented/strands/seen")
+    suspend fun strandsSeen(
+        @Body body: ReinventedStrandsSeenBody,
+    )
 
     companion object {
         /** Moments on a page of My Atlas. */
