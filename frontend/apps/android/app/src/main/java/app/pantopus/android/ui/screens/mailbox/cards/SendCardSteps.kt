@@ -174,10 +174,11 @@ internal fun ToStep(
                     }
             }
         }
-        // Sending to someone not on Pantopus already invites them (plan 11.6): said once, above both ways.
+        // Sending to someone not on Pantopus already invites them (plan 11.6): said once, above both ways. With the card
+        // improvements they can open and read it before they join (Wave 1).
         if (LaunchFeatures.cardTable) {
             Text(
-                "They don’t need Pantopus yet. They join to open it.",
+                if (improved) NO_ACCOUNT_NEEDED else "They don’t need Pantopus yet. They join to open it.",
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
                 color = PantopusColors.cardTextQuiet,

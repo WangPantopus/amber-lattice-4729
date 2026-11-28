@@ -69,6 +69,9 @@ internal fun pickNextLabel(
 ): String = if (improved && form.to == null) CHOOSE_WHO else WRITE_ON_THIS_CARD
 
 internal const val WRITE_ON_THIS_CARD = "Write on this card"
+
+/** Who it's for, above the email and link choices, with the card improvements (Wave 1: no account needed to open it). */
+internal const val NO_ACCOUNT_NEEDED = "They don’t need Pantopus. They can open and read it right away."
 private const val CHOOSE_WHO = "Choose who it’s for"
 
 /** Over Who it's for: the card chosen, small, with its caption and "Change" (back to Pick a card). */
