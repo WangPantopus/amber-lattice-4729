@@ -1281,8 +1281,11 @@ class MomentsComposeViewModel
                         explore = current.sentExplore,
                         mentions = current.sentMentions,
                         play = current.sentPlay,
-                        // Live beams (CONTRACT 9h): the compass at the shutter, with the Live mark and the switch on only.
-                        heading = LivingCompass.atShot()?.takeIf { pulse.on.value && current.liveFor(usable, now) },
+                        // Live beams (CONTRACT 9h): the compass nearest this Moment's own shot, with the Live mark and switch on only.
+                        heading =
+                            current.shot
+                                ?.let { LivingCompass.near(it.at) }
+                                ?.takeIf { pulse.on.value && current.liveFor(usable, now) },
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)

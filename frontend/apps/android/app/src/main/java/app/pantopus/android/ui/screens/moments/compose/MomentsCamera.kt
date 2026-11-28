@@ -72,7 +72,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import app.pantopus.android.data.living.LivingCompass
 import app.pantopus.android.data.moments.MomentMedia
 import app.pantopus.android.data.moments.MomentMediaFile
 import app.pantopus.android.ui.screens.feed.living.LivingCompassWatch
@@ -156,7 +155,6 @@ fun MomentsCameraPreview(
     LivingCompassWatch()
 
     controller.takePhoto = {
-        LivingCompass.markShot()
         val file = MomentMedia.newFile(context, "jpg")
         val options =
             ImageCapture.OutputFileOptions
@@ -178,7 +176,6 @@ fun MomentsCameraPreview(
     }
     controller.startVideo = start@{
         if (recording != null) return@start
-        LivingCompass.markShot()
         val file = MomentMedia.newFile(context, "mp4")
         if (flash) camera?.cameraControl?.enableTorch(true)
         recording =

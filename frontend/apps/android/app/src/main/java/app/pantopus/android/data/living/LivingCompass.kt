@@ -6,9 +6,10 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.os.SystemClock
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import java.time.Instant
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -25,12 +26,15 @@ data class MomentHeadingBody(
 /**
  * "Pulse, reinvented" phase 4, the compass at the shutter for live beams (PHASE-4 piece 2; CONTRACT 9h), as the iPhone's
  * `MomentsStudioCompass.swift`. It reads the phone's rotation sensor only while the camera is up and the switch is on
- * ([watch]), keeps the reading taken at the shutter ([markShot]), and hands it to the Moment's post ([atShot]) when it
- * is fresh and good enough. A phone with no rotation sensor reads nothing and sends nothing. Nothing is kept anywhere.
+ * ([watch]), and keeps the last ten minutes of readings (one every quarter second) on the phone only, so a Moment's post
+ * takes the reading nearest that Moment's own capture time ([near]), within two seconds. A phone with no rotation sensor
+ * reads nothing and sends nothing. The readings are dropped when the switch reads off; nothing is kept anywhere else.
  */
 object LivingCompass : SensorEventListener {
     private const val GOOD_ENOUGH_DEG = 30.0
-    private const val FRESH_MS = 2_000L
+    private const val NEAR_MS = 2_000L
+    private const val EVERY_MS = 250L
+    private const val KEEP_MS = 10 * 60_000L
     private const val NO_ESTIMATE = 180.0
 
     private data class Reading(
@@ -40,16 +44,16 @@ object LivingCompass : SensorEventListener {
     )
 
     private var manager: SensorManager? = null
-    private var latest: Reading? = null
-    private var shot: Reading? = null
+    private val readings = ArrayDeque<Reading>()
     private var declination = 0f
     private val rotation = FloatArray(9)
     private val orientation = FloatArray(3)
 
     /**
-     * Starts reading while [on] (the switch, with the camera up); otherwise stops. [latitude] and [longitude], when the
-     * phone has a place, turn magnetic north into true north.
+     * Starts reading while [on] (the switch, with the camera up); with the switch off it stops and forgets every reading.
+     * [latitude] and [longitude], when the phone has a place, turn magnetic north into true north.
      */
+    @Synchronized
     fun watch(
         context: Context,
         on: Boolean,
@@ -57,44 +61,51 @@ object LivingCompass : SensorEventListener {
         longitude: Double? = null,
     ) {
         stop()
-        if (!on) return
+        if (!on) {
+            readings.clear()
+            return
+        }
         val sensors = context.getSystemService(SensorManager::class.java) ?: return
         val sensor = sensors.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) ?: return
-        if (latitude != null && longitude != null) {
-            declination = GeomagneticField(latitude.toFloat(), longitude.toFloat(), 0f, System.currentTimeMillis()).declination
-        }
+        declination =
+            if (latitude != null && longitude != null) {
+                GeomagneticField(latitude.toFloat(), longitude.toFloat(), 0f, System.currentTimeMillis()).declination
+            } else {
+                0f
+            }
         manager = sensors
         sensors.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI)
     }
 
+    /** The camera went: no more readings (those taken stay, for the Moment being posted). */
+    @Synchronized
     fun stop() {
         manager?.unregisterListener(this)
         manager = null
-        latest = null
-        declination = 0f
     }
 
-    /** The shutter: the reading of this moment, if one came in the last two seconds. */
-    fun markShot() {
-        shot = latest?.takeIf { SystemClock.elapsedRealtime() - it.atMs <= FRESH_MS }
-    }
-
-    /** The heading taken at the shutter, when the compass was good to 30 degrees or better; else null. */
-    fun atShot(): MomentHeadingBody? {
-        val reading = shot ?: return null
-        if (reading.accuracyDeg > GOOD_ENOUGH_DEG) return null
+    /** The reading nearest [captured] (a Moment's own capture time), within two seconds and good to 30 degrees; else null. */
+    @Synchronized
+    fun near(captured: Instant): MomentHeadingBody? {
+        val at = captured.toEpochMilli()
+        val reading = readings.minByOrNull { abs(it.atMs - at) } ?: return null
+        if (abs(reading.atMs - at) > NEAR_MS || reading.accuracyDeg > GOOD_ENOUGH_DEG) return null
         return MomentHeadingBody(deg = reading.deg, accuracyDeg = reading.accuracyDeg)
     }
 
+    @Synchronized
     override fun onSensorChanged(event: SensorEvent) {
+        val now = System.currentTimeMillis()
+        if ((readings.lastOrNull()?.atMs ?: 0L) > now - EVERY_MS) return
         SensorManager.getRotationMatrixFromVector(rotation, event.values)
         SensorManager.getOrientation(rotation, orientation)
         val magnetic = Math.toDegrees(orientation[0].toDouble())
         val deg = ((magnetic + declination) % 360 + 360) % 360
         // The rotation vector's own heading estimate (radians), when the phone gives one.
         val estimate = event.values.getOrNull(4)?.takeIf { it > 0f }?.let { Math.toDegrees(it.toDouble()) }
-        val accuracy = estimate ?: byStatus(event.accuracy)
-        latest = Reading((deg * 10).roundToInt() / 10.0, accuracy.coerceIn(0.0, NO_ESTIMATE), SystemClock.elapsedRealtime())
+        val accuracy = (estimate ?: byStatus(event.accuracy)).coerceIn(0.0, NO_ESTIMATE)
+        readings.addLast(Reading((deg * 10).roundToInt() / 10.0, accuracy, now))
+        while ((readings.firstOrNull()?.atMs ?: now) < now - KEEP_MS) readings.removeFirst()
     }
 
     override fun onAccuracyChanged(
