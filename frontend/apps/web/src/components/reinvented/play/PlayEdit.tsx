@@ -8,6 +8,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { Minus, Plus, X } from 'lucide-react';
 import { Card } from './PlayLayer';
+import { LETTERINGS, MOTIONS, letteringStyle } from './MovingWords';
 import type { PlayItem, PlayKind } from './playTypes';
 import './play.css';
 
@@ -22,6 +23,7 @@ export const PLAY_MAKERS: { kind: PlayKind | 'dial'; label: string }[] = [
   { kind: 'guess', label: 'Guess and reveal' },
   { kind: 'countdown', label: 'Countdown' },
   { kind: 'quote', label: 'Quote' },
+  { kind: 'moving_words', label: 'Moving words' },
   { kind: 'fog', label: 'Fog' },
   { kind: 'swatch', label: 'Colour swatch' },
   { kind: 'before_after', label: 'Before and after' },
@@ -161,7 +163,10 @@ export function PlayMaker({
     [answer, setAnswer] = useState(''),
     [ends, setEnds] = useState(''),
     [colors, setColors] = useState<string[]>(start?.colors?.length ? start.colors.slice(0, 6) : ['#2f6f8f', '#c2410c']),
-    [afterPhoto, setAfterPhoto] = useState<File | null>(start?.afterPhoto ?? null);
+    [afterPhoto, setAfterPhoto] = useState<File | null>(start?.afterPhoto ?? null),
+    [lettering, setLettering] = useState('classic'),
+    [motion, setMotion] = useState<string>('drift'),
+    [ink, setInk] = useState('#ffffff');
   const base = kind === 'dial' ? 'slider' : kind;
   let n = 1;
   while (taken.some((p) => p.id === `${base}-${n}`)) n++;
@@ -189,6 +194,11 @@ export function PlayMaker({
     item = { ...place, kind: 'countdown', title: q.trim(), ends_at: new Date(ends).toISOString() };
   if (base === 'quote' && q.trim()) item = { ...place, kind: 'quote', text: q.trim(), ...(a.trim() ? { source: a.trim() } : {}) };
   if (base === 'fog' && !taken.some((p) => p.kind === 'fog')) item = { ...place, kind: 'fog' };
+  // Moving words (§7k): one line of up to 60 characters, at most two on a photo.
+  const movingTaken = taken.filter((p) => p.kind === 'moving_words').length;
+  const words = q.replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (base === 'moving_words' && words && movingTaken < 2)
+    item = { ...place, kind: 'moving_words', text: words, lettering, motion, color: ink.toUpperCase() };
   if (base === 'swatch' && colors.length) item = { ...place, kind: 'swatch', colors, box: swatchBox(place.x, place.y) };
   if (base === 'before_after' && afterPhoto && !taken.some((p) => p.kind === 'before_after'))
     item = { ...place, kind: 'before_after', ...(q.trim() ? { before: q.trim() } : {}), ...(a.trim() ? { after: a.trim() } : {}) };
@@ -310,6 +320,38 @@ export function PlayMaker({
           <Field label="Where they’re from (optional)">
             <Text value={a} set={setA} max={80} placeholder="Trail sign at Round Lake" />
           </Field>
+        </>
+      )}
+      {base === 'moving_words' && (
+        <>
+          {movingTaken >= 2 && <p className="st-hint">This photo already has two moving words.</p>}
+          <Field label="Your words">
+            <Text value={q} set={(v) => setQ(v.replace(/[\r\n]+/g, ' '))} max={60} placeholder="First frost on the lake" />
+          </Field>
+          <div className="pl-field" role="group" aria-label="Lettering">
+            <span>Lettering</span>
+            <div className="pl-chips">
+              {LETTERINGS.map((l) => (
+                <button key={l.id} type="button" className="st-chip" aria-pressed={lettering === l.id} style={letteringStyle(l.id)} onClick={() => setLettering(l.id)}>
+                  {l.look.name}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="pl-field" role="group" aria-label="How they move">
+            <span>How they move</span>
+            <div className="pl-chips">
+              {MOTIONS.map((m) => (
+                <button key={m.id} type="button" className="st-chip" aria-pressed={motion === m.id} onClick={() => setMotion(m.id)}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Field label="Colour">
+            <input type="color" value={ink} onChange={(e) => setInk(e.target.value)} />
+          </Field>
+          <p className="st-hint">They move over your photo, and stay still for anyone who turns motion off on their device. They’re never drawn into the picture.</p>
         </>
       )}
       {base === 'fog' && (

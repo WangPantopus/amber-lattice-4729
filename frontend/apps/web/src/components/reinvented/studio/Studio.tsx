@@ -2450,7 +2450,7 @@ export default function Studio({
                       </button>
                     )}
                     {!playOn && <p className="st-hint">Polls, boards and the rest go on a post with a photo, or on a Moment.</p>}
-                    {playOn && PLAY_MAKERS.filter((m) => m.kind !== 'before_after' || canPair).map((m) => (
+                    {playOn && PLAY_MAKERS.filter((m) => (m.kind !== 'before_after' || canPair) && (m.kind !== 'moving_words' || canBlur)).map((m) => (
                       <button key={m.kind} type="button" disabled={play.length >= MAX_PLAY} onClick={() => setMaking(m.kind)}>
                         <i aria-hidden="true" />
                         {m.label}
