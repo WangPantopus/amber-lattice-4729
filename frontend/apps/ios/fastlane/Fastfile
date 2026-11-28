@@ -27,7 +27,8 @@ end
 APP_STORE_TARGETS = {
   "Pantopus" => "com.pantopus.app",
   "PantopusWidgets" => "com.pantopus.app.widgets",
-  "PantopusNotificationService" => "com.pantopus.app.notifications"
+  "PantopusNotificationService" => "com.pantopus.app.notifications",
+  "PantopusShare" => "com.pantopus.app.share"
 }.freeze
 
 def app_store_profile_name(identifier)

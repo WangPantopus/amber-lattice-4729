@@ -1,6 +1,7 @@
 package app.pantopus.android.data.api.models.moments
 
 import app.pantopus.android.data.api.models.reinvented.MomentPlanDto
+import app.pantopus.android.data.api.models.reinvented.MomentRepliesStateDto
 import com.squareup.moshi.FromJson
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -176,6 +177,8 @@ data class MomentDto(
     @Json(name = "keep_offer") val keepOffer: Boolean = false,
     /** "Pulse, reinvented" (CONTRACT 6g): the plan started from it that this reader may see in Plans; else null. */
     val plan: MomentPlanDto? = null,
+    /** "Pulse, reinvented" (CONTRACT 8a): replies people can see on it, for a reader whose switch is on; else null. */
+    val replies: MomentRepliesStateDto? = null,
 )
 
 /**
@@ -400,6 +403,8 @@ data class CreateMomentBody(
     val elevation: MomentAltitudeBody? = null,
     /** The Studio's "Guess the spot" (CONTRACT 5a): `true` only when picked; left out otherwise. */
     val guess: Boolean? = null,
+    /** The Studio drawer's "Also show in Explore" (CONTRACT 6f): `true` only when chosen; left out otherwise. */
+    val explore: Boolean? = null,
 )
 
 /**

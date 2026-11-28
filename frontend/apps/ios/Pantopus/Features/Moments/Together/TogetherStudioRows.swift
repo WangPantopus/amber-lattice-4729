@@ -19,8 +19,13 @@ struct TogetherStudioRows: View {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 if case let .retakeFrame(_, title, ghost) = together.context {
                     addingRow(title: title, hasGhost: ghost != nil, photo: model.isPhoto)
-                } else if model.offersRetake {
-                    retakeRow
+                } else if case let .eyesOnAnswer(_, question) = together.context {
+                    answeringRow(question)
+                } else if model.offersEyesOnAsk {
+                    eyesOnAskRow
+                } else {
+                    if model.offersRetake { retakeRow }
+                    if model.offersSeal { sealRow }
                 }
             }
             .onAppear { together.claim(model) }
@@ -53,6 +58,104 @@ struct TogetherStudioRows: View {
         .padding(.vertical, Spacing.s2)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("together.studio.adding")
+    }
+
+    /// "Answering “Is the trail muddy?” with a Live photo".
+    private func answeringRow(_ question: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Answering “\(question)” with a Live photo")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.Color.appText)
+            Text("Take the photo there, now: your Moment answers their question.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.Color.appTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, Spacing.s1)
+        .padding(.vertical, Spacing.s2)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("together.studio.answering")
+    }
+
+    /// "Eyes on: ask people who are there now", on an Ask.
+    private var eyesOnAskRow: some View {
+        Toggle(isOn: $together.asksEyesOnChosen) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Eyes on: ask people who are there now")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.Color.appText)
+                Text(together.asksEyesOnChosen && model.pickedVenue == nil
+                    ? "Pick the place you're asking about: choose a place above."
+                    : "For six hours, people at this place can answer with a Live photo. Nobody is told who is near it.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(Theme.Color.primarySolid)
+        .frame(minHeight: 52)
+        .padding(.horizontal, Spacing.s1)
+        .accessibilityIdentifier("together.studio.eyesOn")
+    }
+
+    /// "Seal it: it opens later": not sealed, on a date, when someone stands here, the next time it rains here.
+    private var sealRow: some View {
+        let placeOK = model.sealPlaceOK
+        let choices = [
+            ("none", "Not sealed"),
+            ("date", "On a date"),
+            ("place", "When someone stands here"),
+            ("rain", "The next time it rains here")
+        ]
+        return VStack(alignment: .leading, spacing: Spacing.s2) {
+            Text("Seal it: it opens later")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Theme.Color.appText)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Spacing.s2) {
+                    ForEach(choices, id: \.0) { key, title in
+                        let on = together.sealOpens == key
+                        let off = (key == "place" || key == "rain") && !placeOK
+                        Button { together.sealOpens = key } label: {
+                            Text(title)
+                                .font(.system(size: 13.5, weight: .semibold))
+                                .foregroundStyle(on ? Color.white : Theme.Color.appText)
+                                .padding(.horizontal, 12)
+                                .frame(height: 34)
+                                .background(Capsule().fill(on ? Theme.Color.primarySolid : Theme.Color.appSurfaceRaised))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(off)
+                        .opacity(off ? 0.45 : 1)
+                        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+                        .accessibilityIdentifier("together.studio.seal.\(key)")
+                    }
+                }
+            }
+            if together.sealOpens == "date" {
+                DatePicker(
+                    "When it opens",
+                    selection: $together.sealAt,
+                    in: Date().addingTimeInterval(61 * 60)...Date().addingTimeInterval(5 * 365 * 86400)
+                )
+                .font(.system(size: 14))
+                .accessibilityIdentifier("together.studio.seal.at")
+            }
+            Text(sealNote(placeOK: placeOK))
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.Color.appTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, Spacing.s1)
+        .padding(.vertical, Spacing.s2)
+    }
+
+    private func sealNote(placeOK: Bool) -> String {
+        switch together.sealOpens {
+        case "none": "Until it opens, only you see what it holds."
+        case "place" where !placeOK, "rain" where !placeOK: "This needs its exact place, on a photo or words."
+        default: "Until it opens, only you see what it holds. It stays, so it's there when it opens."
+        }
     }
 
     /// "Start a Retake", and its name.

@@ -73,6 +73,12 @@ import app.pantopus.android.data.ai.AIScreenContext
 import app.pantopus.android.data.api.models.businesses.BusinessPermission
 import app.pantopus.android.data.mailbox.HolidayCardsRepository
 import app.pantopus.android.data.mailbox.MailboxRepository
+import app.pantopus.android.sharein.ShareInCardPhoto
+import app.pantopus.android.sharein.ShareInDestination
+import app.pantopus.android.sharein.ShareInLanding
+import app.pantopus.android.sharein.ShareInPlaces
+import app.pantopus.android.sharein.ShareInPlansScreen
+import app.pantopus.android.sharein.ShareInRequest
 import app.pantopus.android.ui.components.ClosesKeyboardOnNavigation
 import app.pantopus.android.ui.components.ErrorState
 import app.pantopus.android.ui.components.InviteLinks
@@ -1758,6 +1764,52 @@ private object ChildRoutes {
     fun newMessageShare(file: String): String =
         "chat/new/share?$NEW_MESSAGE_SHARE_FILE_KEY=${java.net.URLEncoder.encode(file, "UTF-8").replace("+", "%20")}"
 
+    /** "Share with a plan": the person's plans, to send a shared photo, video or words to one's chat. */
+    const val SHARE_IN_PLANS = "sharein/plans?$NEW_MESSAGE_SHARE_FILE_KEY={$NEW_MESSAGE_SHARE_FILE_KEY}"
+
+    fun shareInPlans(file: String): String =
+        "sharein/plans?$NEW_MESSAGE_SHARE_FILE_KEY=${java.net.URLEncoder.encode(file, "UTF-8").replace("+", "%20")}"
+
+    /**
+     * Where a share from another app's share sheet opens ([ShareInRequest]): the Moments composer with its photos and
+     * videos (Pulse's card too while "Pulse, reinvented" is on, where Moments are made from Pulse), the Pulse composer
+     * with the first one attached and the words written, a chat (the one named, else the picker) or one of the
+     * person's plans' chats with the first one, or the words, waiting in its composer, or the Christmas card flow,
+     * where the first photo waits for "Write on the back" ([ShareInCardPhoto]). Null when that place is off now.
+     */
+    fun shareIn(
+        context: android.content.Context,
+        shared: ShareInRequest,
+        places: ShareInPlaces,
+    ): String? {
+        val toComposer =
+            shared.destination == ShareInDestination.Moments ||
+                (shared.destination == ShareInDestination.Pulse && places.pulseReinvented && shared.files.isNotEmpty())
+        return when {
+            toComposer -> MomentsRoutes.composeShared(shared.files).takeIf { places.moments && shared.files.isNotEmpty() }
+            shared.destination == ShareInDestination.Pulse ->
+                composePost(PulseIntent.All.key, prefillBody = shared.text, attachment = shared.files.firstOrNull().orEmpty())
+            shared.destination == ShareInDestination.Mail -> {
+                val photo = shared.files.firstOrNull()?.takeIf { places.cards } ?: return null
+                ShareInCardPhoto.leave(photo)
+                mailboxCards(design = null)
+            }
+            shared.destination == ShareInDestination.Plans -> shared.chatFile(context)?.takeIf { places.plans }?.let(::shareInPlans)
+            else -> {
+                val file = shared.chatFile(context) ?: return null
+                val chat = shared.chat ?: return newMessageShare(file)
+                val initials = chat.name.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1).uppercase() }
+                val thread =
+                    if (chat.kind == "room") {
+                        chatConversationRoom(roomId = chat.id, displayName = chat.name, initials = initials, verified = false)
+                    } else {
+                        chatConversationFromPicker(chat.id, chat.name, initials, verified = false, locality = null)
+                    }
+                withShare(thread, file)
+            }
+        }
+    }
+
     /** A thread opened with Today's sky waiting in its composer ([CHAT_SHARE_KEY]). */
     fun withShare(
         route: String,
@@ -2649,6 +2701,24 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
     // red envelope from November 1 to Christmas Day, and the side menu, Today, profiles and chats offer a card.
     val christmasCards: ChristmasCardDoorsViewModel = hiltViewModel()
     val christmasCardsOpen by christmasCards.open.collectAsStateWithLifecycle()
+    // A photo, video, link or words shared to Pantopus from another app's share sheet opens its composer here.
+    val shareInPlaces =
+        ShareInPlaces(
+            moments = momentsOn,
+            pulseReinvented = pulseReinvented,
+            plans = plansFlags.plans,
+            // A card takes a photo of the person's own while cards are open and the memories key is on.
+            cards = christmasCardsOpen && LaunchFeatures.holidayCardMemories,
+        )
+    ShareInLanding(places = shareInPlaces, name = currentHandle, nav = navController) { shared ->
+        ChildRoutes.shareIn(appContext, shared, shareInPlaces)?.let { route ->
+            // A Moment is made over the Moments map, so the person lands on it once it has posted (as on iPhone).
+            if (shared.destination == ShareInDestination.Moments && !pulseReinvented) {
+                navController.navigateToRootTab(PantopusRoute.Moments)
+            }
+            navController.navigate(route)
+        }
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { christmasCards.refresh() }
     val openChristmasCards: () -> Unit = { navController.openTabRoot(PantopusRoute.Mail, ChildRoutes.mailboxCards(null)) }
     val sendCardTo: ((String, String) -> Unit)? =
@@ -6340,6 +6410,27 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onInvite = { inviteShare.share(appContext, InviteLinks.INVITE_MESSAGE, "Invite to Pantopus") },
                         title = "Send in a chat",
                         withGroups = true,
+                    )
+                }
+                composable(
+                    route = ChildRoutes.SHARE_IN_PLANS,
+                    arguments =
+                        listOf(
+                            navArgument(ChildRoutes.NEW_MESSAGE_SHARE_FILE_KEY) {
+                                type = NavType.StringType
+                                defaultValue = ""
+                            },
+                        ),
+                ) { entry ->
+                    val file = entry.arguments?.getString(ChildRoutes.NEW_MESSAGE_SHARE_FILE_KEY).orEmpty()
+                    ShareInPlansScreen(
+                        onCancel = { navController.popBackStack() },
+                        onPick = { roomId, title ->
+                            // The plan's chat replaces the list, so Back from it returns to where the share landed.
+                            navController.popBackStack()
+                            val chat = ChildRoutes.chatConversationRoom(roomId, title, title.trim().take(1).uppercase(), verified = false)
+                            navController.navigate(ChildRoutes.withShare(chat, file))
+                        },
                     )
                 }
                 composable(ChildRoutes.PULSE_FEED) {

@@ -281,7 +281,7 @@ struct MomentRetakeView: View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
             if retake.wantToGo > 0 { note("\(retake.wantToGo) want to go") }
             if retake.canAdd {
-                note("Your frame stays in this Retake.")
+                note("Stand where the first picture was taken to add your frame. It stays in this Retake.")
                 Button { onAdd(retake) } label: {
                     Label { Text("Add your frame") } icon: { Icon(.camera, size: 18, strokeWidth: 2.2, color: .white) }
                         .font(.system(size: 15, weight: .semibold))
@@ -293,7 +293,8 @@ struct MomentRetakeView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("together.retake.add")
             } else {
-                note("Stand where the first picture was taken to add a frame.")
+                // `can_add` is false only for the 6-hour rule (CONTRACT 8e): say that, in the server's own words.
+                note("You added a frame here a little while ago. Come back later in the day.")
             }
         }
         .padding(.top, Spacing.s2)

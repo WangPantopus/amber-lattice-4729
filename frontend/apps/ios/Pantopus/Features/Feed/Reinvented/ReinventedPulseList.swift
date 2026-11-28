@@ -57,6 +57,10 @@ struct ReinventedPulseList: View {
                 if let strip, !strip.isEmpty, model.reach != "explore" {
                     ReinventedAliveStrip(strip: strip, onOpenMoment: onOpenMoment, onOpenRing: onOpenRing)
                 }
+                // Eyes on near you (CONTRACT 8f): read only once the Ask chip is picked.
+                if model.chip == "ask" { EyesOnNearSection(viewer: model.viewer) }
+                // Relics near you (CONTRACT 8g): read only once the Spots chip is picked.
+                if model.chip == "spots" { RelicsNearSection() }
                 if model.isEmpty {
                     emptyNote
                 }
@@ -198,6 +202,14 @@ struct ReinventedPulseList: View {
                     .padding(.top, Spacing.s3)
                     .accessibilityIdentifier("reinventedPulse.status.\(postId)")
             }
+            if let line = model.travel(of: postId)?.line {
+                Text(line)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .padding(.horizontal, Spacing.s4)
+                    .padding(.top, Spacing.s1)
+                    .accessibilityIdentifier("reinventedPulse.travel.\(postId)")
+            }
             PulsePostCard(
                 content: card,
                 onTap: { onOpenPost(postId) },
@@ -212,6 +224,9 @@ struct ReinventedPulseList: View {
                 ),
                 onReply: reply
             )
+            if let travel = model.travel(of: postId) {
+                ReinventedPassItOn(postId: postId, travel: travel, viewer: model.viewer)
+            }
         }
         .background(Theme.Color.appSurface)
         .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))

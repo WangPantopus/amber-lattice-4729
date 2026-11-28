@@ -370,6 +370,7 @@ public struct RootTabView: View {
             .modifier(WaitingCardLanding(account: signedInUserID, tabs: model) {
                 linkIsOpening || PlanFirstOpen.shared.planId != nil
             })
+            .modifier(shareInLanding)
             // And the plan that brought the person, once (JOURNEYS section 2, change 3).
             .modifier(PlanFirstOpenLanding(account: signedInUserID, tabs: model) { linkIsOpening || model.selected != model.openingTab })
             .onChange(of: model.selected) { _, selected in
@@ -646,10 +647,6 @@ public struct RootTabView: View {
     /// A link is waiting to open in the signed-in tabs, or its invitation is showing.
     private var linkIsOpening: Bool {
         router.pending.map(WaitingCardLanding.opens) == true || pendingInviteToken != nil
-    }
-
-    private var signedInUserName: String {
-        if case let .signedIn(user) = auth.state { user.displayName ?? "" } else { "" }
     }
 
     /// Links that leave the profile cover in place: the monthly receipt
@@ -1176,5 +1173,31 @@ extension RootTabView {
     /// on, every Moment is in Pulse and the Moments tab isn't drawn).
     var momentsOnBar: Bool {
         momentsFlags.moments && !(PulseReinventedFlags.shared.isOn && !ReinventedServer.shared.behind)
+    }
+}
+
+extension RootTabView {
+    /// The name the side menu shows; empty until the person has one.
+    private var signedInUserName: String {
+        if case let .signedIn(user) = auth.state { user.displayName ?? "" } else { "" }
+    }
+
+    /// A photo, video, link or words shared to Pantopus from another app's share sheet opens here: this tells the
+    /// share extension who is signed in and where they can share, and holds the cover a share opens in.
+    private var shareInLanding: ShareInLanding {
+        ShareInLanding(
+            account: signedInUserID,
+            name: signedInUserName,
+            tabs: model,
+            places: ShareInPlaces(
+                moments: momentsFlags.moments,
+                plans: plansFlags.plans,
+                cards: LaunchFeatures.mailbox && LaunchFeatures.holidayCards && LaunchFeatures.holidayCardMemories
+                    && cardDoors.isOpen
+            )
+        ) {
+            showProfile = false
+            pendingInviteToken = nil
+        }
     }
 }

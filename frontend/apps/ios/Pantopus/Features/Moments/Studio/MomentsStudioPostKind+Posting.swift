@@ -39,11 +39,13 @@ struct StudioPostFields: Encodable {
     let takenAt: String?
     let takenHere: Bool?
     let fix: StudioPostFix?
+    var eyesOn: Bool? // Phase 3's Eyes on (CONTRACT 8f): an Ask about a picked place; set by `TogetherStudio`, else left out.
 
     private enum CodingKeys: String, CodingKey {
         case stamps, elevation, explore, fix
         case takenAt = "taken_at"
         case takenHere = "taken_here"
+        case eyesOn = "eyes_on"
     }
 }
 
@@ -170,6 +172,7 @@ extension MomentsComposerModel {
             )
             request.mediaLocations = [taken]
         }
+        if placed, TogetherStudio.shared.asksEyesOn(model: self) == true { request.geocodePlaceId = pickedVenue?.placeId } // 8f
         return request
     }
 
@@ -196,7 +199,8 @@ extension MomentsComposerModel {
             explore: kind.mayGoToExplore && offersExplore && studioExplore ? true : nil,
             takenAt: takenAt.map(MomentTime.string),
             takenHere: photo && here ? true : nil,
-            fix: sentFix
+            fix: sentFix,
+            eyesOn: TogetherStudio.shared.asksEyesOn(model: self) // Phase 3 (CONTRACT 8f): nil unless chosen.
         )
     }
 

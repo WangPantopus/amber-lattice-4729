@@ -18,6 +18,8 @@ public struct MomentTogetherDTO: Sendable, Hashable {
     public let underPenName: Bool
     /// The Retake this Moment starts or is a frame of (CONTRACT 8e): nil with the switch off.
     let retake: MomentRetakeDTO?
+    /// A relic's seal (CONTRACT 8g): nil with the switch off or when not sealed.
+    let seal: MomentSealDTO?
 
     init(from decoder: any Decoder) {
         let c = try? decoder.container(keyedBy: Keys.self)
@@ -25,10 +27,11 @@ public struct MomentTogetherDTO: Sendable, Hashable {
         let author = try? c?.nestedContainer(keyedBy: AuthorKeys.self, forKey: .author)
         underPenName = (try? author?.decodeIfPresent(String.self, forKey: .kind)) == "pen_name"
         retake = try? c?.decodeIfPresent(MomentRetakeDTO.self, forKey: .retake)
+        seal = try? c?.decodeIfPresent(MomentSealDTO.self, forKey: .seal)
     }
 
     private enum Keys: String, CodingKey {
-        case replies, author, retake
+        case replies, author, retake, seal
     }
 
     private enum AuthorKeys: String, CodingKey {

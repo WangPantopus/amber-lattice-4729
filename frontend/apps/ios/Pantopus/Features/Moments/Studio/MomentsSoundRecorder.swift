@@ -18,6 +18,9 @@ struct MomentsStudioRecording: Equatable {
     let durationMs: Int
     /// A voice's words with their times (from speech, or spread over the voice when typed).
     var words: [MomentSoundWord]?
+    /// Wind cleaned from it on the phone (`MomentsSoundCleaner`), and the recording as it was, to undo that.
+    var cleaned = false
+    var original: URL?
 }
 
 @Observable
