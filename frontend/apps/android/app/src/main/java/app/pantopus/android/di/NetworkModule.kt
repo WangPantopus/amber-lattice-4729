@@ -897,4 +897,10 @@ object NetworkModule {
     @Singleton
     fun provideReinventedApi(retrofit: Retrofit): app.pantopus.android.data.api.services.ReinventedApi =
         retrofit.create(app.pantopus.android.data.api.services.ReinventedApi::class.java)
+
+    /** "Pulse, reinvented" phase 3, together: replies people can see on a Moment (`/api/reinvented/moments/:id/replies`). */
+    @Provides
+    @Singleton
+    fun provideTogetherApi(retrofit: Retrofit): app.pantopus.android.data.api.services.TogetherApi =
+        retrofit.create(app.pantopus.android.data.api.services.TogetherApi::class.java)
 }
