@@ -54,7 +54,7 @@ struct SkyShareButton: View {
                         onPosted: { _ in pantopus = nil }
                     )
                 case let .chat(attachment):
-                    SkyShareChatFlow(attachment: attachment) { pantopus = nil }
+                    ShareInChatFlow(attachments: [attachment.chatAttachment]) { pantopus = nil }
                 }
             }
             .readableColumn()

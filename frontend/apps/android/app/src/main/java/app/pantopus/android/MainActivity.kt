@@ -42,6 +42,7 @@ import app.pantopus.android.data.store.StoreSync
 import app.pantopus.android.push.ASSISTANT_RECIPIENT
 import app.pantopus.android.push.PushTokenSyncer
 import app.pantopus.android.push.ReminderActionReceiver
+import app.pantopus.android.sharein.ShareInAccountStore
 import app.pantopus.android.ui.components.CutoutBand
 import app.pantopus.android.ui.components.ToastController
 import app.pantopus.android.ui.components.ToastHost
@@ -152,7 +153,11 @@ class MainActivity : FragmentActivity() {
         guidance.start()
         observeAppLockPrivacyHold()
         lifecycleScope.launch {
-            authRepository.state.collect { pilotEvents.authChanged() }
+            authRepository.state.collect { state ->
+                pilotEvents.authChanged()
+                // Signed out: the share sheet offers nobody's name, places or chats (ShareInActivity).
+                if (state is AuthRepository.State.SignedOut) ShareInAccountStore.clear(applicationContext)
+            }
         }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {

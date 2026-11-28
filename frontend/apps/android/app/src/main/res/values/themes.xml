@@ -7,6 +7,13 @@
         <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
     </style>
 
+    <!-- ShareInActivity: a sheet over the app that shared, so that app stays visible behind it. -->
+    <style name="Theme.Pantopus.ShareIn" parent="Theme.Pantopus">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.InputMethod</item>
+    </style>
+
     <!-- P6c — Tasks-near-me widget row styles (RemoteViews layout only). -->
     <!-- "Today at your address": white text over the living sky, with the Now card's shadow. -->
     <style name="WidgetTodayText">

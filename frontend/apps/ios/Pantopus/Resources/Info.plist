@@ -56,14 +56,18 @@
 	<string>Pantopus uses your location to help find your address and show nearby activity.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Pantopus uses the microphone for voice messages in chat, a spoken greeting on a Christmas card, and the sound of videos you post.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Pantopus turns your voice into words on your iPhone, so others can read along with a voice you post.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Pantopus saves images you choose to export, like a QR code or your own Moment, to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Pantopus uses photos you choose for your profile, posts, Moments, home records and mail.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Pantopus turns your voice into words on your iPhone, so others can read along with a voice you post.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INSendMessageIntent</string>
+	</array>
 	<key>PantopusAPIBaseURL</key>
 	<string>$(PANTOPUS_API_BASE_URL)</string>
 	<key>PantopusLaunchFeatures</key>

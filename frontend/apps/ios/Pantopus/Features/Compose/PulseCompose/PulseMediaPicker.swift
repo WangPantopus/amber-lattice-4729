@@ -186,6 +186,14 @@ private extension UIView {
 }
 
 @MainActor
+extension PulseComposePhoto {
+    /// A photo or video file another app's share sheet handed to Pantopus (`ShareInCoordinator`), read exactly as
+    /// one picked from the album is: where it was taken, HEIC as JPEG, the video exported for upload.
+    static func shared(file url: URL, isVideo: Bool) async throws -> PulseComposePhoto {
+        try await PulsePickedMedia.load(file: url, isVideo: isVideo)
+    }
+}
+
 private enum PulsePickedMedia {
     /// What the Photos picker registers for a Live Photo: `com.apple.live-photo-bundle`
     /// (PHLivePhoto's readable type), which doesn't conform to `UTType.livePhoto`.
@@ -245,6 +253,11 @@ private enum PulsePickedMedia {
             }
         }
         defer { try? FileManager.default.removeItem(at: url) }
+        return try await load(file: url, isVideo: isVideo)
+    }
+
+    /// A photo or video as a file: a picked one's copy, or one another app's share sheet handed to Pantopus.
+    static func load(file url: URL, isVideo: Bool) async throws -> PulseComposePhoto {
         if isVideo {
             return try await video(at: url)
         }

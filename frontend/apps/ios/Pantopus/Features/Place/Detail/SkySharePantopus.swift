@@ -5,7 +5,8 @@
 //  "Or share in Pantopus", under the share preview's Share video and Share
 //  photo: the same picture, drawn at the tap — with its four-second clip as
 //  the photo's motion when rain or snow falls — posted to Pulse as a Local
-//  Update or sent in a chat. Parity twin of Android's `SkySharePantopus.kt`.
+//  Update or sent in a chat (`ShareInChatFlow`). Parity twin of Android's
+//  `SkySharePantopus.kt`.
 //
 
 import SwiftUI
@@ -95,76 +96,5 @@ struct SkyShareInPantopus: View {
                 .accessibilityIdentifier("todaySkyShareChat")
             }
         }
-    }
-}
-
-/// "Send in a chat": the New Message picker, with recent group chats too.
-/// The chat picked opens with the picture (and its clip) in its composer;
-/// closing it goes back to Today.
-struct SkyShareChatFlow: View {
-    let onClose: @MainActor () -> Void
-
-    @State private var route: SkyShareChatRoute
-    @State private var picker: NewMessageViewModel
-
-    init(attachment: SkyShareAttachment, onClose: @escaping @MainActor () -> Void) {
-        self.onClose = onClose
-        let route = SkyShareChatRoute(attachment: attachment)
-        _route = State(initialValue: route)
-        _picker = State(initialValue: NewMessageViewModel(
-            includesGroups: true,
-            onSelect: route.open,
-            onCancel: onClose,
-            onInvite: route.inviteSomeone
-        ))
-    }
-
-    var body: some View {
-        Group {
-            if let chat = route.chat {
-                ChatConversationView(viewModel: chat, mode: .dm, onBack: onClose)
-            } else {
-                NewMessageView(viewModel: picker, title: "Send in a chat")
-            }
-        }
-        .sheet(item: $route.invite) { request in request.makeView() }
-    }
-}
-
-/// The chat "Send in a chat" opened, made once when it's picked.
-@Observable
-@MainActor
-final class SkyShareChatRoute {
-    private(set) var chat: ChatConversationViewModel?
-    /// "Invite someone to Pantopus", from the picker's empty frame.
-    var invite: SystemSheetRequest?
-    private let attachment: SkyShareAttachment
-
-    init(attachment: SkyShareAttachment) {
-        self.attachment = attachment
-    }
-
-    func inviteSomeone() {
-        invite = .share(items: InviteLinks.shareItems)
-    }
-
-    /// The person or group chat picked, with the picture waiting in its composer.
-    func open(_ picked: NewMessageDestination) {
-        guard chat == nil, case let .signedIn(user) = AuthManager.shared.state else { return }
-        let destination = InboxConversationDestination(
-            mode: picked.roomId.map { .room(id: $0) } ?? .person(otherUserId: picked.userId),
-            displayName: picked.displayName,
-            initials: picked.initials,
-            avatarURL: picked.avatarURL?.absoluteString,
-            identityKind: picked.identity == .business ? "business" : nil,
-            verified: picked.verified
-        )
-        chat = ChatConversationViewModel(
-            mode: destination.threadMode,
-            counterparty: destination.counterparty,
-            counterpartyAvatarURL: picked.avatarURL,
-            currentUserId: user.id,
-            sharedAttachments: [attachment.chatAttachment]
-        )
     }
 }

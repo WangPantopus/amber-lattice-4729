@@ -1914,6 +1914,10 @@ public final class ChatConversationViewModel {
             sendLimitNotice = nil
             rebuild()
             scheduleMarkRead(for: roomId)
+            // The share sheet may suggest this chat (never a business inbox's: a share arrives as the person).
+            if asBusinessUserId == nil {
+                ShareSuggestions.sent(roomId: roomId, name: counterparty.displayName, avatarURL: counterpartyAvatarURL)
+            }
             return true
         } catch {
             if Self.isPreBidLimit(error) {

@@ -57,6 +57,8 @@ struct PantopusApp: App {
                 .onOpenURL { url in
                     guard !StripeAPI.handleURLCallback(with: url) else { return }
                     guard !AuthManager.isOAuthCallback(url) else { return }
+                    // The share extension bringing the app forward with what was shared to it.
+                    guard !ShareInCoordinator.shared.take(url) else { return }
                     // SwiftUI also delivers HTTPS universal links through this entry point.
                     guard !WebLinkFallback.openIfNeeded(url) else { return }
                     DeepLinkRouter.shared.handle(url: url)

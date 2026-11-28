@@ -55,6 +55,7 @@ import app.pantopus.android.data.profile.UserReportsRepository
 import app.pantopus.android.data.realtime.SocketManager
 import app.pantopus.android.data.upload.UploadFile
 import app.pantopus.android.data.upload.UploadRepository
+import app.pantopus.android.sharein.ShareInRequest
 import app.pantopus.android.ui.theme.PantopusIcon
 import com.squareup.moshi.Moshi
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -1063,6 +1064,15 @@ class ChatConversationViewModel
         fun attachShared(file: File) {
             viewModelScope.launch {
                 draftLoadJob?.join()
+                // Words or a link shared from another app's share sheet come as a file too: they go in the text box,
+                // under anything already being written.
+                if (file.name.endsWith(ShareInRequest.TEXT_SUFFIX)) {
+                    val words = withContext(Dispatchers.IO) { runCatching { file.readText().also { file.delete() } }.getOrNull() }
+                    if (!words.isNullOrBlank()) {
+                        setComposerText(listOf(_composerText.value, words).filter { it.isNotBlank() }.joinToString("\n"))
+                    }
+                    return@launch
+                }
                 val bytes = withContext(Dispatchers.IO) { runCatching { file.readBytes() }.getOrNull() } ?: return@launch
                 val mimeType = URLConnection.guessContentTypeFromName(file.name) ?: "image/png"
                 val kind = if (mimeType.startsWith("image/")) ChatQueuedAttachmentKind.Image else ChatQueuedAttachmentKind.Document
