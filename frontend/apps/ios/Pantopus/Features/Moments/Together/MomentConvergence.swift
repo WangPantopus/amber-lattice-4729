@@ -235,14 +235,17 @@ struct MomentConvergenceView: View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: Spacing.s2), GridItem(.flexible(), spacing: Spacing.s2)], spacing: Spacing.s2) {
             ForEach(moments) { moment in
                 VStack(alignment: .leading, spacing: 4) {
-                    AsyncImage(url: moment.kind == .video ? moment.poster : moment.media) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        Theme.Color.appSurfaceSunken
-                    }
-                    .frame(height: 180)
-                    .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: Radii.md))
+                    Color.clear
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 180)
+                        .overlay {
+                            AsyncImage(url: moment.kind == .video ? moment.poster : moment.media) { image in
+                                image.resizable().scaledToFill()
+                            } placeholder: {
+                                Theme.Color.appSurfaceSunken
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: Radii.md))
                     Text(moment.author.name)
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(Theme.Color.appTextSecondary)
