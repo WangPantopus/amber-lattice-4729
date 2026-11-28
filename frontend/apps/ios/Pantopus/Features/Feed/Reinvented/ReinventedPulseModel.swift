@@ -103,9 +103,17 @@ final class ReinventedPulseModel {
         var lastBand: String?
         // A Retake is one row (CONTRACT 8e): its first frame in the list opens the whole Retake.
         var retakes = Set<String>()
+        var skies = Set<String>()
+        var boards = Set<String>()
         for (index, item) in items.enumerated() {
             if case let .moment(moment) = item.content, let retake = moment.together.retake,
                !retakes.insert(retake.startId).inserted { continue }
+            // A sky piece is one row too (CONTRACT 8h): its first photo in the list opens the piece.
+            if case let .moment(moment) = item.content, moment.together.retake == nil, let sky = moment.together.convergence,
+               !skies.insert(sky.id).inserted { continue }
+            // A pinboard is one row too (CONTRACT 8i): its newest piece in the list opens the board.
+            if case let .moment(moment) = item.content, moment.together.retake == nil, moment.together.convergence == nil,
+               let board = moment.together.pinboard, !boards.insert(board.startId).inserted { continue }
             if reach == "explore", index == 0, pickedCount > 0 { rows.append(.heading("Today, elsewhere")) }
             if reach == "explore", index == pickedCount, pickedCount > 0 { rows.append(.heading("New elsewhere")) }
             if let band = item.band, band != lastBand, let line = bands.first(where: { $0.band == band }) {

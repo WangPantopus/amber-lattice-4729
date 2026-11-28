@@ -35,7 +35,7 @@ extension MomentsViewerModel {
     /// The viewer holds still while the replies are open, while a pin is being dropped or one is open (8b), and while
     /// a Retake is open over it (8e).
     var repliesOpen: Bool {
-        MomentRepliesPrompt.shared.open != nil || MomentPinsStore.shared.holds || retakeOpen
+        MomentRepliesPrompt.shared.open != nil || MomentPinsStore.shared.holds || retakeOpen || convergenceOpen || pinboardOpen || crowdOpen
     }
 
     /// In the author's Moment options: show the replies to everyone who sees it, or hide them. Nil where it isn't
@@ -83,6 +83,9 @@ struct MomentRepliesChip: View {
                         MomentPinControls(moment: moment, canDrop: replies.canReply)
                     }
                     MomentRetakeChip(model: model)
+                    MomentConvergenceChip(model: model)
+                    MomentPinboardChip(model: model)
+                    MomentCrowdChip(model: model)
                     MomentSealMark(model: model)
                 }
                 .padding(.trailing, Spacing.s4)
@@ -101,7 +104,9 @@ struct MomentRepliesChip: View {
     /// Phase 3 has a chip for this Moment even where replies don't show: a Retake's (8e), the author's own seal (8g).
     private static func together(_ moment: MomentDTO, mine: Bool) -> Bool {
         guard PulseReinventedFlags.shared.isOn else { return false }
-        return moment.together.retake != nil || (mine && moment.together.seal?.open == false)
+        if moment.together.retake != nil || moment.together.convergence != nil || moment.together.pinboard != nil { return true }
+        // A crowd's chip (8i) once its scene is read: the first look asks for it.
+        return (mine && moment.together.seal?.open == false) || MomentCrowdStore.shared.scene(for: moment) != nil
     }
 
     private func chip(_ replies: MomentRepliesDTO, moment: MomentDTO) -> some View {

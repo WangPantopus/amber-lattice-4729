@@ -23,6 +23,8 @@ final class TogetherStudio {
         case retakeFrame(startId: String, title: String, ghost: URL?)
         /// Answer an Eyes-on Ask with a Live photo (8f).
         case eyesOnAnswer(askId: String, question: String)
+        /// Add a piece to a pinboard (8i): a photo, one per person.
+        case pinboardPiece(startId: String, prompt: String)
     }
 
     /// Set before the Studio opens; cleared when it closes (`ReinventedStudioPresenter.close`).
@@ -37,6 +39,11 @@ final class TogetherStudio {
     /// "Seal it" (8g): `none`, `date`, `place` or `rain`, and the date for `date`.
     var sealOpens = "none"
     var sealAt = Date().addingTimeInterval(86400)
+    /// "Join tonight's sky" (8h): on by default where it is offered, one tap to leave out.
+    var joinsSky = true
+    /// "Start a pinboard" and its prompt (1 to 80 characters, 8i).
+    var startsPinboard = false
+    var pinboardPrompt = ""
 
     /// The Studio the choices belong to: its drawer rows claim it when they appear. A request from any other composer
     /// (today's Post sheet, another Studio) gets none of them.
@@ -59,6 +66,9 @@ final class TogetherStudio {
         asksEyesOnChosen = false
         sealOpens = "none"
         sealAt = Date().addingTimeInterval(86400)
+        joinsSky = true
+        startsPinboard = false
+        pinboardPrompt = ""
         owner = nil
     }
 
@@ -94,10 +104,16 @@ final class TogetherStudio {
         case let .eyesOnAnswer(askId, _):
             // An Eyes-on answer is a Live photo (CONTRACT 8f); anything else posts as an ordinary Moment.
             if case .photo = model.draft { fields.eyesOnFor = askId }
+        case let .pinboardPiece(startId, _):
+            // A pinboard's piece is a photo (CONTRACT 8i); anything else posts as an ordinary Moment.
+            if case .photo = model.draft { fields.pinboardOf = startId }
         case nil:
             let title = String(retakeTitle.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
             if startsRetake, !title.isEmpty, model.offersRetake { fields.retake = .init(title: title) }
             fields.seal = sealChoice(for: model)
+            if joinsSky, model.offersSky { fields.joinConvergence = true }
+            let prompt = String(pinboardPrompt.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+            if startsPinboard, !prompt.isEmpty, model.offersPinboard { fields.pinboard = .init(prompt: prompt) }
         }
         return fields.isEmpty ? nil : fields
     }
@@ -132,6 +148,21 @@ extension MomentsComposerModel {
         return false
     }
 
+    /// "Join tonight's sky" may be chosen (8h): a Live photo with an exact place, shared now with people nearby (a sky
+    /// piece counts only those), away from home, under the person's own name, not a Pulse post. The server decides
+    /// whether a window is open; a Moment taken outside one posts as usual.
+    var offersSky: Bool {
+        guard case .photo = draft, audience == .nearby, !noLocationOn, pin != nil, !floats, !showArea else { return false }
+        return shareLaterBody == nil && !postsUnderMadeUpName && !studioGuess && studioPostKind == nil && place?.atHome != true
+    }
+
+    /// "Start a pinboard" may be chosen (8i): one photo under the person's own name, not a Pulse post. The server checks
+    /// again (`400 PINBOARD_INVALID`).
+    var offersPinboard: Bool {
+        guard case .photo = draft else { return false }
+        return !postsUnderMadeUpName && studioPostKind == nil && !studioGuess
+    }
+
     /// "Start a Retake" may be chosen (8e): one photo with an exact place, taken now, away from home, under the person's
     /// own name, not a guess spot, not a Pulse post. The server checks again (`400 RETAKE_INVALID`).
     var offersRetake: Bool {
@@ -150,9 +181,17 @@ struct TogetherCreateFields: Encodable, Hashable {
     var retakeOf: String?
     var eyesOnFor: String?
     var seal: SealChoice?
+    var joinConvergence: Bool?
+    var pinboard: PinboardStart?
+    var pinboardOf: String?
+
+    struct PinboardStart: Encodable, Hashable {
+        let prompt: String
+    }
 
     var isEmpty: Bool {
-        retake == nil && retakeOf == nil && eyesOnFor == nil && seal == nil
+        retake == nil && retakeOf == nil && eyesOnFor == nil && seal == nil && joinConvergence == nil && pinboard == nil
+            && pinboardOf == nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -160,6 +199,9 @@ struct TogetherCreateFields: Encodable, Hashable {
         case retakeOf = "retake_of"
         case eyesOnFor = "eyes_on_for"
         case seal
+        case joinConvergence = "join_convergence"
+        case pinboard
+        case pinboardOf = "pinboard_of"
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -168,6 +210,9 @@ struct TogetherCreateFields: Encodable, Hashable {
         try c.encodeIfPresent(retakeOf, forKey: .retakeOf)
         try c.encodeIfPresent(eyesOnFor, forKey: .eyesOnFor)
         try c.encodeIfPresent(seal, forKey: .seal)
+        try c.encodeIfPresent(joinConvergence, forKey: .joinConvergence)
+        try c.encodeIfPresent(pinboard, forKey: .pinboard)
+        try c.encodeIfPresent(pinboardOf, forKey: .pinboardOf)
     }
 }
 

@@ -20,6 +20,10 @@ public struct MomentTogetherDTO: Sendable, Hashable {
     let retake: MomentRetakeDTO?
     /// A relic's seal (CONTRACT 8g): nil with the switch off or when not sealed.
     let seal: MomentSealDTO?
+    /// The sky piece this Moment joined (CONTRACT 8h): nil with the switch off or when it joined none.
+    let convergence: MomentConvergenceDTO?
+    /// The pinboard this Moment starts or is a piece of (CONTRACT 8i): nil with the switch off or when none.
+    let pinboard: MomentPinboardDTO?
 
     init(from decoder: any Decoder) {
         let c = try? decoder.container(keyedBy: Keys.self)
@@ -28,10 +32,12 @@ public struct MomentTogetherDTO: Sendable, Hashable {
         underPenName = (try? author?.decodeIfPresent(String.self, forKey: .kind)) == "pen_name"
         retake = try? c?.decodeIfPresent(MomentRetakeDTO.self, forKey: .retake)
         seal = try? c?.decodeIfPresent(MomentSealDTO.self, forKey: .seal)
+        convergence = try? c?.decodeIfPresent(MomentConvergenceDTO.self, forKey: .convergence)
+        pinboard = try? c?.decodeIfPresent(MomentPinboardDTO.self, forKey: .pinboard)
     }
 
     private enum Keys: String, CodingKey {
-        case replies, author, retake, seal
+        case replies, author, retake, seal, convergence, pinboard
     }
 
     private enum AuthorKeys: String, CodingKey {
