@@ -316,9 +316,13 @@ private struct ReinventedPosterArt: View {
                         if pictures, let moment {
                             ReinventedAtlasPicture(moment: moment, large: false)
                         }
+                        // On a dark chip, so it reads over a month's picture too.
                         Text(Calendar.current.shortMonthSymbols[month - 1])
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.black.opacity(0.55)))
                             .padding(4)
                     }
                     .aspectRatio(3 / 4, contentMode: .fit)
