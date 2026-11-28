@@ -82,8 +82,8 @@ internal object MomentCutoutLift {
                         .build(),
                 )
             try {
-                if (!MomentSubjects.ready(context.applicationContext, segmenter)) return@withContext null
                 val surface = MomentSubjects.surface(picture, placement)
+                if (!MomentSubjects.ready(context.applicationContext, segmenter)) return@withContext standIn(surface, x, y, id)
                 val px = (x * surface.width).toInt()
                 val py = (y * surface.height).toInt()
                 val subjects = segmenter.process(InputImage.fromBitmap(surface, 0)).await().subjects
@@ -109,6 +109,32 @@ internal object MomentCutoutLift {
                 segmenter.close()
             }
         }
+}
+
+/**
+ * Debug builds on an emulator only ([MomentStandIn]): an oval of the picture around the finger stands in for the thing
+ * the model would lift there; null everywhere else.
+ */
+private fun standIn(
+    surface: Bitmap,
+    x: Float,
+    y: Float,
+    id: Int,
+): MomentCutout? {
+    if (!MomentStandIn.active) return null
+    val size = 0.3f
+    val left = (x - size / 2).coerceIn(0f, 1f - size)
+    val top = (y - size / 2).coerceIn(0f, 1f - size)
+    val shape = MomentStandIn.oval(surface, left, top, size, size * surface.width / surface.height)
+    val box =
+        android.graphics.Rect(
+            (left * surface.width).toInt(),
+            (top * surface.height).toInt(),
+            ((left + size) * surface.width).toInt(),
+            ((top + size * surface.width / surface.height) * surface.height).toInt().coerceAtMost(surface.height),
+        )
+    val image = Bitmap.createBitmap(shape, box.left, box.top, box.width(), box.height())
+    return MomentCutout(id, image, (box.exactCenterX()) / surface.width, box.exactCenterY() / surface.height, size)
 }
 
 /** "Your cutouts": the 24 newest cutouts lifted on this phone, as PNGs in the app's own folder (never uploaded). */
