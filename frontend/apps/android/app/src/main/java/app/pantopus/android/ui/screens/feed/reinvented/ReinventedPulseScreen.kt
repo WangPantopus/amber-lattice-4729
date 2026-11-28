@@ -376,7 +376,8 @@ private fun ReinventedPulseLayout(
                 timeRow = if (atlas.on) null else { modifier -> ReinventedTimeRow(mapState.time, mapModel::pickTime, modifier) },
                 mapExtras = { guessTop, deck ->
                     if (!atlas.on) {
-                        ReinventedGuessSpotsChip(mapState, Modifier.align(Alignment.TopStart).padding(top = guessTop + Spacing.s2, start = Spacing.s4))
+                        val at = Modifier.align(Alignment.TopStart).padding(top = guessTop + Spacing.s2, start = Spacing.s4)
+                        ReinventedGuessSpotsChip(mapState, at)
                     }
                     ReinventedPeekDeck(deck = mapState.deck, onFocus = mapModel::focus, onOpen = open, modifier = deck)
                 },
