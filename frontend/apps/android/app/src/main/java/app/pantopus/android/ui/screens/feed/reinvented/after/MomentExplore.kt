@@ -27,10 +27,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import app.pantopus.android.data.pulse.PulseReinventedFeature
 import app.pantopus.android.ui.screens.moments.compose.MomentsComposeUiState
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.Spacing
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -42,13 +45,22 @@ internal object MomentExploreState {
     val on = mutableStateOf(false)
 }
 
-/** Holds the choice for the composer it belongs to; a new composer starts with it off. */
+/**
+ * Holds the choice for the composer it belongs to; a new composer starts with it off. When the switch goes off while the
+ * person is still composing, the Studio gives way to today's Post screen on the same composer: the choice goes at once,
+ * as the Studio's stamps and guess do there, so today's Post screen sends exactly today's body.
+ */
 @HiltViewModel
 class MomentExploreViewModel
     @Inject
-    constructor() : ViewModel() {
+    constructor(
+        feature: PulseReinventedFeature,
+    ) : ViewModel() {
         init {
             MomentExploreState.on.value = false
+            viewModelScope.launch {
+                feature.on.collect { on -> if (!on) MomentExploreState.on.value = false }
+            }
         }
 
         override fun onCleared() {
