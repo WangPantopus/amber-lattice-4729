@@ -120,13 +120,16 @@ private struct MomentsStudioCoverChip: View {
                         Circle().fill(color).frame(width: 16, height: 16).overlay(Circle().stroke(Color.white, lineWidth: 1))
                     }
                 }
+                .accessibilityHidden(true)
             } else {
                 Icon(.cloud, size: 15, strokeWidth: 2.2, color: .white)
+                    .accessibilityHidden(true)
             }
             Text(item.kind == .fog ? "Fog-wipe on" : "Swatch on")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
+                .accessibilityLabel(item.kind == .fog ? "Fog-wipe: the picture opens frosted" : "Swatch: people try these colours on")
             Button(action: onRemove) {
                 Icon(.x, size: 14, strokeWidth: 2.6, color: .white)
                     .frame(width: 24, height: 24)
@@ -140,8 +143,8 @@ private struct MomentsStudioCoverChip: View {
         .padding(.trailing, 6)
         .frame(height: 34)
         .background(Capsule().fill(Color.black.opacity(0.55)))
+        // The words and the x stay two elements, so VoiceOver reaches the x.
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(item.kind == .fog ? "Fog-wipe: the picture opens frosted" : "Swatch: people try these colours on")
         .accessibilityIdentifier("moments.studio.play.\(item.id)")
     }
 }
