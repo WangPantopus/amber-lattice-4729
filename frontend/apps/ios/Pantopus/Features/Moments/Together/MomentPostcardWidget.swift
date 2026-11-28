@@ -36,9 +36,11 @@ enum PostcardWidgetStore {
     /// Reads closer together than this reuse the last one.
     private static let every: TimeInterval = 300
     private static var lastRead: Date?
-    /// The first read of an app run waits until the app's first screen has long arrived (LEAD-4, the seventh condition).
-    private static var firstRead = true
-    static let firstReadAfter: Duration = .seconds(5)
+    /// No read in the app's first five seconds, so none runs beside its first screen (LEAD-4, the seventh condition),
+    /// however many times the switch is applied while the app opens; and one read at a time.
+    private static let firstReadAfter: TimeInterval = 5
+    private static let started = Date()
+    private static var reading = false
 
     private static var defaults: UserDefaults? {
         UserDefaults(suiteName: GigWidgetSnapshotContract.appGroupId)
@@ -66,9 +68,12 @@ enum PostcardWidgetStore {
             WidgetCenter.shared.reloadTimelines(ofKind: kind)
         }
         if !force, let lastRead, Date().timeIntervalSince(lastRead) < every { return }
-        if firstRead {
-            firstRead = false
-            try? await Task.sleep(for: firstReadAfter)
+        guard !reading else { return }
+        reading = true
+        defer { reading = false }
+        let early = firstReadAfter - Date().timeIntervalSince(started)
+        if early > 0 {
+            try? await Task.sleep(for: .seconds(early))
             guard PulseReinventedFlags.shared.isOn, MomentsComposerModel.account == account else { return }
         }
         guard await isPlaced() else { return }
