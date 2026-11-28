@@ -267,6 +267,8 @@ internal fun MomentsMarksEditor(
     var asksDiscard by remember { mutableStateOf(false) }
     // "Pulse, reinvented"'s Studio: up to five colours from the picture, under the six inks.
     val photo = remember(picture, studio) { picture?.takeIf { studio }?.let(MomentPhotoColors::of).orEmpty() }
+    // "Pulse, reinvented"'s Studio on a photo: its subject, lifted on the phone for words behind it.
+    val lift = rememberSubjectLift(picture.takeIf { studio && video == null }, editing, onEdit)
     val cancel = { if (editing.changed) asksDiscard = true else onClose(false) }
     BackHandler(onBack = cancel)
     Box(
@@ -316,7 +318,8 @@ internal fun MomentsMarksEditor(
             MomentMarksTool.Text -> {
                 val density = LocalDensity.current
                 val keyboard = (WindowInsets.ime.getBottom(density) - WindowInsets.navigationBars.getBottom(density)).coerceAtLeast(0)
-                TextTools(editing, onEdit, tools.padding(bottom = with(density) { keyboard.toDp() }), studio = studio, photo = photo)
+                val above = tools.padding(bottom = with(density) { keyboard.toDp() })
+                TextTools(editing, onEdit, above, studio = studio, photo = photo, lift = lift)
             }
             MomentMarksTool.Draw -> DrawTools(editing, onEdit, tools, photo, studio = studio)
             MomentMarksTool.Resize ->

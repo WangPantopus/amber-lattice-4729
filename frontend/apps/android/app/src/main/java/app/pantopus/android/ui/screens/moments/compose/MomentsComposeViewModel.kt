@@ -6,6 +6,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.MediaStore
+import androidx.core.content.FileProvider
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -33,10 +34,12 @@ import app.pantopus.android.data.moments.serverCode
 import app.pantopus.android.data.plans.PlanGpsFix
 import app.pantopus.android.data.plans.PlanLocationResolver
 import app.pantopus.android.data.pulse.PulseReinventedFeature
+import app.pantopus.android.sharein.shareInFile
 import app.pantopus.android.ui.screens.compose.placepicker.PostPlaceTag
 import app.pantopus.android.ui.screens.compose.pulse.MediaLocationAccess
 import app.pantopus.android.ui.screens.compose.pulse.PickedPlace
 import app.pantopus.android.ui.screens.compose.pulse.readPickedPlace
+import app.pantopus.android.ui.screens.feed.reinvented.after.sentExplore
 import app.pantopus.android.ui.screens.moments.MomentsRoutes
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.line
@@ -49,7 +52,10 @@ import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksKeeper
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
 import app.pantopus.android.ui.screens.moments.map.metersBetween
+import app.pantopus.android.ui.screens.moments.studio.StudioMention
+import app.pantopus.android.ui.screens.moments.studio.holdsStudioChoices
 import app.pantopus.android.ui.screens.moments.studio.sentGuess
+import app.pantopus.android.ui.screens.moments.studio.sentMentions
 import app.pantopus.android.ui.screens.moments.studio.sentStamps
 import app.pantopus.android.ui.screens.moments.studio.stampElevation
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -62,6 +68,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -152,6 +159,8 @@ enum class ComposeGate { Locating, NeedsLocation, NeedsAdult, NotEligible, Open 
 
 data class MomentsComposeUiState(
     val gate: ComposeGate = ComposeGate.Locating,
+    /** A photo or video shared from another app is on its way to the Post screen: the camera isn't asked for meanwhile. */
+    val sharedWaiting: Boolean = false,
     val step: ComposeStep = ComposeStep.Camera,
     /** The fix the camera's chip and a text card pin at. */
     val here: ComposePin? = null,
@@ -222,6 +231,8 @@ data class MomentsComposeUiState(
     val stamps: List<MomentStampPlacement> = emptyList(),
     /** "Pulse, reinvented"'s Studio: "Guess the spot" picked (CONTRACT 5a). Only the Studio sets it. */
     val guess: Boolean = false,
+    /** "Pulse, reinvented"'s Studio: people picked after "@" in the caption (CONTRACT 7h). Only the Studio sets it. */
+    val mentions: List<StudioMention> = emptyList(),
 ) {
     val kind: String
         get() =
@@ -365,6 +376,25 @@ class MomentsComposeViewModel
                 ),
             )
         val state: StateFlow<MomentsComposeUiState> = _state.asStateFlow()
+
+        init {
+            // Shared from another app: taken once nothing stands before taking, picking or writing (where you are,
+            // then 18+), exactly as if picked from the library. Each of several is its own Moment.
+            val shared =
+                savedState.get<String>(MomentsRoutes.SHARED_KEY).orEmpty().split(',').mapNotNull { name ->
+                    shareInFile(context, name)?.let { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", it) }
+                }
+            if (shared.isNotEmpty()) {
+                _state.update { it.copy(sharedWaiting = true) }
+                viewModelScope.launch {
+                    _state.first { it.gate == ComposeGate.Open }
+                    picked(shared)
+                    // On the Post screen, or it couldn't be opened and a notice says so: the camera is the camera again.
+                    _state.first { it.step == ComposeStep.Review || it.notice != null }
+                    _state.update { it.copy(sharedWaiting = false) }
+                }
+            }
+        }
 
         /** Your photo, for the pin on the Post sheet. */
         val avatarUrl: String? get() = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.avatarUrl
@@ -1023,11 +1053,11 @@ class MomentsComposeViewModel
 
         /**
          * Today's Post screen takes the Moment from the Studio (the switch went off): the picture and the words stay; the
-         * stamps and the made-up name, which today's screens don't offer, go. Nothing changes when there were none.
+         * stamps, the made-up name and the mentions, which today's screens don't offer, go. Nothing changes when there were none.
          */
         fun leaveStudio() =
             _state.update {
-                if (it.stamps.isEmpty() && !it.madeUp && !it.guess) it else it.copy(stamps = emptyList(), madeUp = false, guess = false)
+                if (!it.holdsStudioChoices) it else it.copy(stamps = emptyList(), madeUp = false, guess = false, mentions = emptyList())
             }
 
         /** The Sky's rows (`MomentsComposeSky.kt`). */
@@ -1066,6 +1096,9 @@ class MomentsComposeViewModel
         fun clearVenue() = _state.update { it.copy(venue = null, findingPlace = false, pinsAtPlace = false) }
 
         fun setCaption(caption: String) = _state.update { it.copy(caption = caption.take(MAX_CAPTION)) }
+
+        /** "Pulse, reinvented"'s Studio: a person picked after "@" in the caption (sent while their "@Name" stays in it). */
+        fun addMention(person: StudioMention) = _state.update { it.copy(mentions = (it.mentions + person).distinctBy { m -> m.id }) }
 
         fun clearNotice() = _state.update { it.copy(notice = null) }
 
@@ -1136,6 +1169,8 @@ class MomentsComposeViewModel
                         stamps = current.sentStamps,
                         elevation = current.stampElevation(usable),
                         guess = current.sentGuess,
+                        explore = current.sentExplore,
+                        mentions = current.sentMentions,
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)
@@ -1321,6 +1356,7 @@ class MomentsComposeViewModel
                         clientRequestId = requestId,
                         takenAt = current.takenAt?.toString()?.takeIf { current.media != null },
                         shareLater = current.shareLaterChoice?.key,
+                        mentions = current.sentMentions,
                     )
                 if (publish(body, current, videos, pinned = null, retried = true)) {
                     choices.edit().putInt("$accountId.hours", current.hours).apply()

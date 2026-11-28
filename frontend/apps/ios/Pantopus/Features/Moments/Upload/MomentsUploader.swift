@@ -12,6 +12,8 @@
 //  its own outbox folder, so an upload that didn't finish (the app swiped
 //  away, no connection for hours) picks up at the next launch (the server
 //  takes the same file again as a no-op). The files go once it's done.
+//  Away from the app the Lock Screen says the same (the posting card,
+//  `MomentsUploader+PostingCard`).
 //
 
 import CoreLocation
@@ -19,45 +21,6 @@ import Foundation
 import Logging
 import Observation
 import UIKit
-
-/// A Moment on its way to the map.
-struct MomentPosting: Identifiable, Equatable {
-    enum Phase: Equatable {
-        case uploading
-        /// The file is in; the picture check is running.
-        case checking
-        /// Live: the ring stays where it is until the map has read the real one.
-        case live
-        /// Stopped; Retry tries again.
-        case failed(String)
-    }
-
-    let id: String
-    let kind: MomentKind
-    var momentId: String?
-    var latitude: Double
-    var longitude: Double
-    var progress: Double
-    var phase: Phase
-    /// How long it shows for, for "Your Moment is live. It shows for 24 hours."
-    var hours = 24
-    /// Posted with no location: only the strip shows it while it posts, never the map (contract v3.4).
-    var noLocation = false
-    /// The photo, or the video's poster, in the outbox: the strip shows what is posting.
-    var picture: URL?
-    /// A part of a video posted as several Moments: the parts' shared name, and which part this is (0 first).
-    var series: String?
-    var part = 0
-    /// Not the last part: "Your Moment is live" is said once, when the last one is.
-    var quiet = false
-}
-
-/// One Moment made by the Post sheet with the files that go up for it.
-struct MomentsUploadPart {
-    let moment: MomentDTO
-    let media: MomentPreparedMedia
-    let folderId: String
-}
 
 /// What a waiting upload needs after a relaunch.
 private struct MomentOutboxManifest: Codable {
@@ -114,15 +77,6 @@ final class MomentsUploader {
         try? FileManager.default.removeItem(at: folder)
     }
 
-    /// A text card is live the moment it's made: the map says so and reads its rings again.
-    func wentLive(_ moment: MomentDTO) {
-        if moment.state == .scheduled { return waits(nil, shareAt: moment.sky.shareAt) }
-        // A Moment with no location has no spot to bring into view.
-        if !moment.noLocation { liveSpot = CLLocationCoordinate2D(latitude: moment.latitude, longitude: moment.longitude) }
-        announceLive(hours: moment.hours)
-        finished += 1
-    }
-
     /// The map has read the rings again: the posting rings that went live make way for the real ones.
     func clearLive() {
         postings.removeAll { $0.phase == .live }
@@ -132,6 +86,7 @@ final class MomentsUploader {
     func retry(_ id: String) {
         guard let index = postings.firstIndex(where: { $0.id == id }) else { return }
         postings[index].phase = .uploading
+        cardStarts(id)
         run(id)
     }
 
@@ -141,6 +96,7 @@ final class MomentsUploader {
         let gone = postings.first { $0.id == id }
         let later = postings.filter { $0.series != nil && $0.series == gone?.series && $0.part > (gone?.part ?? 0) }.map(\.id)
         defer { later.forEach(discard) }
+        cardRemoved(id)
         tasks.removeValue(forKey: id)?.cancel()
         MomentsBackgroundUpload.shared.cancel(id)
         let momentId = postings.first { $0.id == id }?.momentId
@@ -191,6 +147,7 @@ final class MomentsUploader {
         // The file is in: nothing is left to remind about, whatever the picture check takes from here
         // (the wait for it can outlast the app's time in the background).
         MomentsUploadReminder.cancel(id)
+        if uploaded.state == .checking { cardUploaded(id) }
         await settle(id, state: uploaded.state, momentId: momentId, shareAt: uploaded.sky.shareAt)
     }
 
@@ -201,6 +158,7 @@ final class MomentsUploader {
         let progress: @Sendable (Double) -> Void = { fraction in
             Task { @MainActor [weak self] in
                 self?.update(id) { $0.progress = max($0.progress, fraction) }
+                self?.cardProgress(id)
             }
         }
         var outcome: MomentUploadOutcome = if let earlier = await earlierUpload(id, progress: progress) {
@@ -245,16 +203,8 @@ final class MomentsUploader {
         // Should the app be swiped away now, iOS stops the transfer and nothing runs to say so: the reminder is set first.
         // A later part waits behind the ones before it: its reminder allows for them.
         MomentsUploadReminder.schedule(id, account: Self.signedInAccount, behind: postings.first { $0.id == id }?.part ?? 0)
+        cardArmed(id)
         return await MomentsBackgroundUpload.shared.send(id: id, request: request, bodyFile: body, progress: progress)
-    }
-
-    /// An upload ended with nobody waiting for it: it finished while the app was closed. When it went in and
-    /// no posting ring is up for it, its files go and the map reads again; anything else waits for `resume`.
-    func endedInBackground(_ id: String, succeeded: Bool) {
-        guard succeeded, !postings.contains(where: { $0.id == id }) else { return }
-        _ = MomentsBackgroundUpload.shared.takeFinished(id)
-        removeFiles(id)
-        finished += 1
     }
 
     /// Live: the map says so and reads the ring. Checking: waits for the picture
@@ -274,10 +224,13 @@ final class MomentsUploader {
         let quiet = postings.first { $0.id == id }?.quiet ?? false
         if state == .held {
             notice = "Your Moment is waiting for a quick review before it shows."
+            cardEnds(id, .held)
             finish(id)
         } else if state == .scheduled {
+            cardEnds(id, .later, shareAt: shareAt)
             return waits(id, shareAt: quiet ? nil : shareAt)
         } else {
+            cardEnds(id, state == .live ? .live : .uploaded)
             // The posting ring stays put until the map has the real ring (`clearLive`), so nothing jumps.
             update(id) {
                 $0.phase = .live
@@ -299,7 +252,7 @@ final class MomentsUploader {
     }
 
     private func announceLive(hours: Int) {
-        liveNote = "Your Moment is live. It shows for \(hours == 1 ? "1 hour" : "\(hours) hours")."
+        liveNote = "Your Moment is live. \(Self.showsFor(hours: hours))"
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
@@ -309,9 +262,11 @@ final class MomentsUploader {
         case .mediaTooLong, .mediaTooLarge, .mediaRejected, .unavailable, .ended, .notFound:
             // Trying again won't help: say why and let it go.
             notice = failure == .ended || failure == .notFound ? "Your Moment ended before its file went up." : failure.message
+            cardFails(id, notice ?? failure.message)
             discard(id)
         default:
             update(id) { $0.phase = .failed(failure.message) }
+            cardFails(id, failure.message)
         }
     }
 
@@ -386,6 +341,7 @@ final class MomentsUploader {
             pickedUp.insert(id)
             run(id)
         }
+        cardsResumed()
     }
 
     private func save(id: String, momentId: String, media: MomentPreparedMedia) {
@@ -428,6 +384,7 @@ final class MomentsUploader {
         pickedUp = []
         MomentsBackgroundUpload.shared.cancelAll()
         MomentsUploadReminder.cancelAll()
+        PostingLiveActivityController.shared.removeAll()
         postings = []
         plainNote = nil
         liveNote = nil
@@ -476,6 +433,7 @@ extension MomentsUploader {
             )
         }
         postings.insert(contentsOf: block, at: 0)
+        if let first = block.first { cardStarts(first.id) }
         for (posting, part) in zip(block, parts) {
             media[posting.id] = part.media
             save(id: posting.id, momentId: part.moment.id, media: part.media)
@@ -495,6 +453,32 @@ extension MomentsUploader {
     private func waits(_ id: String?, shareAt: String?) {
         if let id { finish(id) }
         if let at = MomentTime.parse(shareAt) { liveNote = SkyWords.scheduledNotice(at) }
+        finished += 1
+    }
+}
+
+// MARK: - Live at once, and in with the app closed
+
+extension MomentsUploader {
+    /// A text card is live the moment it's made: the map says so and reads its rings again.
+    func wentLive(_ moment: MomentDTO) {
+        if moment.state == .scheduled { return waits(nil, shareAt: moment.sky.shareAt) }
+        // A Moment with no location has no spot to bring into view.
+        if !moment.noLocation { liveSpot = CLLocationCoordinate2D(latitude: moment.latitude, longitude: moment.longitude) }
+        announceLive(hours: moment.hours)
+        finished += 1
+    }
+
+    /// An upload ended with nobody waiting for it: it finished while the app was closed. When it went in and
+    /// no posting ring is up for it, its files go and the map reads again; anything else waits for `resume`.
+    func endedInBackground(_ id: String, succeeded: Bool) {
+        guard !postings.contains(where: { $0.id == id }) else { return }
+        let saved = manifest(id)
+        // A long video's card has its last word when its last part is in.
+        let card = saved?.quiet == true ? nil : saved?.series ?? id
+        guard succeeded else { return cardEndsClosed(card, answer: nil, succeeded: false) }
+        cardEndsClosed(card, answer: MomentsBackgroundUpload.shared.takeFinished(id)?.body, succeeded: true)
+        removeFiles(id)
         finished += 1
     }
 }

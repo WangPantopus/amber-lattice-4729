@@ -163,7 +163,9 @@ data class HomeVerificationContent(
                 HomeVerificationStatus.PendingPostcard -> "Check your mailbox"
                 HomeVerificationStatus.ProvisionalBootstrap -> "Limited access"
                 HomeVerificationStatus.PendingApproval -> "Waiting for approval"
-                HomeVerificationStatus.PendingDoc -> "Document under review"
+                // This screen shows only when no claim is open (declined, withdrawn, or closed for having no
+                // document), so nothing is under review: the words hold whether or not a document was uploaded.
+                HomeVerificationStatus.PendingDoc -> "Verify with a document"
                 HomeVerificationStatus.Provisional ->
                     if (isInChallengeWindow) "Challenge window active" else "Provisional access"
                 HomeVerificationStatus.SuspendedChallenged -> "Access suspended"
@@ -186,8 +188,9 @@ data class HomeVerificationContent(
                     "A household member needs to approve your request. " +
                         "Reopen this screen to check for updates."
                 HomeVerificationStatus.PendingDoc ->
-                    "Your uploaded documents are waiting for a Pantopus reviewer." +
-                        if (mailAvailable) " Meanwhile, you can verify your address by mail." else ""
+                    "A Pantopus reviewer checks the document you upload, and you get a notification when it’s " +
+                        "decided. If you haven’t uploaded one yet, add it below." +
+                        if (mailAvailable) " You can also verify your address by mail." else ""
                 HomeVerificationStatus.Provisional ->
                     if (isInChallengeWindow) {
                         "Your access is provisional while existing members can review. " +

@@ -256,7 +256,7 @@ final class HomeClaimDecisionTests: XCTestCase {
 
     func testReviewProjectionNeverInventsIdentityShareOrClaimantStatement() throws {
         let response = try JSONDecoder().decode(AdminClaimDetailResponse.self, from: Data(detail().utf8))
-        XCTAssertEqual(ReviewClaimMap.shareValue(for: response.claim), "—")
+        XCTAssertEqual(ReviewClaimMap.shareValue(for: response.claim), "")
         XCTAssertNil(ReviewClaimMap.statement(for: response.claim))
         XCTAssertNil(ReviewClaimMap.statementAttribution(response))
         XCTAssertEqual(ReviewClaimMap.trustChips(for: response.claim, evidenceCount: 1).map(\.label), ["Identity not confirmed"])

@@ -26,7 +26,6 @@ struct ReinventedPulseView: View {
     @State private var strip = ReinventedStripModel()
     @State private var height: Height = .middle
     @State private var dragged: CGFloat = 0
-    @State private var watching: MomentsWatchSession?
     @State private var showsDial = false
     /// My Atlas (CONTRACT 6e, `ReinventedAtlas`): the switch's third choice, and the kept Moment opened from it.
     @State private var atlas = ReinventedAtlasModel()
@@ -34,7 +33,6 @@ struct ReinventedPulseView: View {
     @State private var atlasItem: MomentDTO?
     /// "This Moment has ended." after a link to one that can't be played.
     @State private var linkNote: String?
-    @Environment(\.colorScheme) private var colorScheme
     /// Regular width (an iPad, the iPhone Duo open) puts the list and the map side by side where they fit.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -72,19 +70,7 @@ struct ReinventedPulseView: View {
         .onChange(of: ReinventedStudioPresenter.shared.closings) { _, _ in
             Task { await model.refresh() }
         }
-        .fullScreenCover(item: $watching) { session in
-            MomentsViewer(
-                session: session,
-                systemScheme: colorScheme,
-                stopsOnDisappear: true,
-                onHideAuthor: { _ in },
-                onShowAuthor: { _ in },
-                onClose: {
-                    watching = nil
-                    Task { await MomentsTabDot.shared.reread() }
-                }
-            )
-        }
+        .modifier(MomentRetakeListSheet())
     }
 
     /// One camera (PHASE-1 §2.11): + opens the Studio. Its "+ Ask / Kind" comes with that piece.
@@ -136,11 +122,9 @@ struct ReinventedPulseView: View {
         .accessibilityLabel("Showing \(scopeTitle). Change what Pulse shows")
         .accessibilityIdentifier("reinventedPulse.scope")
         .sheet(isPresented: $showsDial) {
-            ReinventedReachDial(reach: model.reach, miles: model.miles) { reach, miles in
-                showsDial = false
-                Task { await model.pick(reach: reach, miles: miles) }
+            ReinventedReachDial(reach: model.reach, miles: model.miles, circle: model.circle) { reach, miles, circle in
+                Task { await model.pick(reach: reach, miles: miles, circle: circle) }
             }
-            .presentationDetents([.medium, .large])
         }
     }
 
@@ -154,7 +138,7 @@ struct ReinventedPulseView: View {
 
     private var scopeTitle: String {
         switch model.reach {
-        case "close": "Close circle"
+        case "close": model.circle?.name ?? "Close circle"
         case "explore": "Explore"
         default: model.placeLabel.map { "\($0) · \(model.miles) mi" } ?? "Around me"
         }
@@ -297,9 +281,16 @@ struct ReinventedPulseView: View {
             }
     }
 
+    /// The viewer opens from the Pulse tab's root (`ReinventedStudioCover`), outside the tab's navigation stack.
+    private func watch(_ ring: MomentRingDTO) {
+        let request = MomentsWatchRequest(rings: [ring], start: 0, newOnly: false)
+        ReinventedViewerPresenter.shared.watching = MomentsWatchSession(request: request) { _ in }
+    }
+
     private func open(_ moment: MomentDTO) {
+        if RetakePrompt.shared.opens(moment) { return }
         let ring = MomentRingDTO(moment: moment, mine: model.isMine(moment))
-        watching = MomentsWatchSession(request: MomentsWatchRequest(rings: [ring], start: 0, newOnly: false)) { _ in }
+        watch(ring)
     }
 
     /// The Moment a link named: it plays at once; ended, or not one this person may see, a line says so.
@@ -322,7 +313,7 @@ struct ReinventedPulseView: View {
     private func open(_ item: ReinventedMapModel.Item) {
         switch item {
         case let .ring(ring):
-            watching = MomentsWatchSession(request: MomentsWatchRequest(rings: [ring], start: 0, newOnly: false)) { _ in }
+            watch(ring)
         case let .mark(mark):
             onOpenPost(mark.post.id)
         case let .kept(kept):

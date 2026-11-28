@@ -49,7 +49,7 @@ final class HomeVerificationContentTests: XCTestCase {
 
     func testPendingDocFrame() {
         let content = HomeVerificationContent.make(status: .pendingDoc)
-        XCTAssertEqual(content.headline, "Document under review")
+        XCTAssertEqual(content.headline, "Verify with a document")
         XCTAssertEqual(content.halo.tone, .warning)
         XCTAssertTrue(content.body.contains("Pantopus reviewer"))
     }

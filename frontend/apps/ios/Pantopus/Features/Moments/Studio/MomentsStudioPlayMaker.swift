@@ -72,6 +72,18 @@ struct MomentsStudioPlayMaker: View {
                 if let making { form(making) }
             }
         }
+        .onAppear(perform: takeSuggestion)
+    }
+
+    /// Illuminate's suggestion opened this maker (CONTRACT 7i): its kind, filled only with what the caption says.
+    private func takeSuggestion() {
+        guard let fill = MomentsStudioSuggestState.shared.prefill else { return }
+        MomentsStudioSuggestState.shared.prefill = nil
+        making = nil
+        start(fill.kind)
+        words[0] = fill.prompt
+        if !fill.options.isEmpty { options = fill.options.map { String($0.prefix(40)) } }
+        byNumber = fill.kind == .guess
     }
 
     private func start(_ kind: Making) {

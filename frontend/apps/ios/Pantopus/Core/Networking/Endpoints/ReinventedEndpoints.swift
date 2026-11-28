@@ -16,9 +16,12 @@ public enum ReinventedEndpoints {
         miles: Int?,
         chip: String,
         at point: (latitude: Double, longitude: Double)?,
-        cursor: String?
+        cursor: String?,
+        circle: String? = nil
     ) -> Endpoint {
         var query = ["reach": reach, "chip": chip, "limit": "20"]
+        // One of the person's circles inside Close circle (CONTRACT 8d): only its people who are in.
+        if let circle { query["circle"] = circle }
         if let miles { query["miles"] = String(miles) }
         if let point {
             query["latitude"] = String(format: "%.5f", point.latitude)

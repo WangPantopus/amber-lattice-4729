@@ -89,7 +89,7 @@ enum ReviewClaimApproval {
         switch proof {
         case "verified": ("Document checked", "A reviewer verified a document.")
         case "pending": ("Document waiting for your check", "Use Review private documents to verify it.")
-        default: ("No document yet", "The claimant is asked to upload one.")
+        default: ("No document yet", "The claimant hasn\u{2019}t uploaded one yet.")
         }
     }
 }
@@ -104,13 +104,17 @@ struct ReviewClaimApprovalPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s0) {
-            let identity = ReviewClaimApproval.identityLine(approval)
+            // The reviewer's own confirmation shows as done here; it's saved when they approve.
+            let attested = identityAttested && !approval.identityConfirmed && !identityFailed
+            let identity = attested
+                ? (title: "You confirmed their identity", detail: "Saved with the claim when you approve.")
+                : ReviewClaimApproval.identityLine(approval)
             row(
                 icon: .idCard,
                 title: identity.title,
                 detail: identity.detail,
-                done: approval.identityConfirmed,
-                waiting: approval.identity == "processing"
+                done: approval.identityConfirmed || attested,
+                waiting: !attested && approval.identity == "processing"
             )
             .accessibilityIdentifier("reviewClaimDetail_approvalIdentity")
             if !approval.identityConfirmed, !identityFailed {

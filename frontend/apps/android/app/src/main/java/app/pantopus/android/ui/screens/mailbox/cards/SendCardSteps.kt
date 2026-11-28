@@ -93,6 +93,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.data.api.models.mail_compose.MailRecipientDto
@@ -103,6 +104,7 @@ import app.pantopus.android.data.api.models.mailbox.HolidayCardCollection
 import app.pantopus.android.data.api.models.mailbox.HolidayCardDesign
 import app.pantopus.android.data.api.models.mailbox.HolidayCardsResponse
 import app.pantopus.android.data.api.models.mailbox.StampBalance
+import app.pantopus.android.sharein.ShareInCardPhoto
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardMood
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardRack
@@ -1043,7 +1045,19 @@ private fun MediaUnderTheNote(
     buyStamp: (() -> Unit)?,
     beforeAdd: () -> Unit,
 ) {
-    if (photos != null) PhotoUnderTheNote(photo, fromName, photos, buyStamp, beforeAdd)
+    if (photos != null) {
+        // A photo shared to Mail from another app's share sheet goes on the card here, as if picked
+        // ([ShareInCardPhoto]). Where this card can't take one it waits, and the row says why.
+        val context = LocalContext.current
+        if (buyStamp == null && photo == null) {
+            LaunchedEffect(Unit) {
+                ShareInCardPhoto.take(context)?.let { file ->
+                    photos.onAdd(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file))
+                }
+            }
+        }
+        PhotoUnderTheNote(photo, fromName, photos, buyStamp, beforeAdd)
+    }
     if (voices != null) {
         VoiceUnderTheNote(
             voice = voice,

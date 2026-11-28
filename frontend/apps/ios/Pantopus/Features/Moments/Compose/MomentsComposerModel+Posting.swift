@@ -66,8 +66,11 @@ extension MomentsComposerModel {
                 marks: marks
             )
             body.series = seriesId.map { MomentSeriesDTO(id: $0, index: index + 1, count: ready.count) }
+            // The Studio's step deck (CONTRACT 7g): one step per Moment, never a video posted in parts; nil otherwise.
+            body.deck = seriesId == nil ? takeDeckStep() : nil
+            body.loop = seriesId == nil ? takeLoop() : nil
             do {
-                try await made.append(MomentsAPI.send(MomentsEndpoints.create(body), as: MomentEnvelope.self).moment)
+                try await made.append(MomentsAPI.send(createEndpoint(body, part: index), as: MomentEnvelope.self).moment)
             } catch let failure as MomentsFailure {
                 refused(failure)
                 return false
@@ -102,7 +105,7 @@ extension MomentsComposerModel {
     private func postText(location: MomentLocationBody) async -> Bool {
         let body = createBody(kind: .text, location: location, requestId: textRequestId.lowercased(), caption: "")
         do {
-            let created = try await MomentsAPI.send(MomentsEndpoints.create(body), as: MomentEnvelope.self).moment
+            let created = try await MomentsAPI.send(createEndpoint(body, part: 0), as: MomentEnvelope.self).moment
             saveChoices()
             MomentsUploader.shared.wentLive(created)
             return true

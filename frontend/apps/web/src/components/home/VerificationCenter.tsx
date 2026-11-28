@@ -6,6 +6,8 @@ import { useHomePermissions } from './useHomePermissions';
 import * as api from '@pantopus/api';
 import LandlordVerificationFlow from './LandlordVerificationFlow';
 import { removalLink } from './member-removals/removalModel';
+import { useResidencyProgress } from '@/components/homes/useResidencyProgress';
+import { residencyNextStep } from '@/components/homes/residencyGuidance';
 
 interface VerificationCenterProps {
   homeId: string;
@@ -68,10 +70,10 @@ export default function VerificationCenter({ homeId, onRefresh }: VerificationCe
   const status = access?.verification_status || 'unverified';
   const effectiveStatus = access?.ownership_claim_state === 'needs_more_info' ? 'claim_needs_more_info' : status;
   const isResidency = access?.verification_kind === 'residency';
-  const config = isResidency ? {
-    icon: '\u23F3', iconBg: 'bg-blue-100', title: 'Your residency request is under review',
-    body: 'A household reviewer must confirm your request before you can open this home. Check for updates below.',
-  } : getStatusConfig(effectiveStatus, access);
+  if (isResidency) {
+    return <ResidencyPanel homeId={homeId} onReload={reload} onMoveOut={handleMoveOut} />;
+  }
+  const config = getStatusConfig(effectiveStatus, access);
 
   return (
     <div className="max-w-lg mx-auto px-4 py-12">
@@ -135,7 +137,7 @@ export default function VerificationCenter({ homeId, onRefresh }: VerificationCe
       )}
 
       {/* Action buttons */}
-      {!isResidency && <div className="space-y-3">
+      <div className="space-y-3">
         {/* Enter postcard code */}
         {status === 'pending_postcard' && (
           <>
@@ -177,8 +179,56 @@ export default function VerificationCenter({ homeId, onRefresh }: VerificationCe
             onClick={() => router.push(`/app/homes/${homeId}/verify-postcard`)}
           />
         )}
-      </div>}
+      </div>
 
+      <AlwaysVisibleActions homeId={homeId} onMoveOut={handleMoveOut} onReload={reload} />
+    </div>
+  );
+}
+
+// ============================================================
+// Someone who isn't this Home's owner and can't open it yet
+// ============================================================
+
+/**
+ * The server knows why: they asked to join a household, their address still needs proof, or they added the Home
+ * themselves and ownership has its own review (GET /api/homes/:id/my-residency). The panel says that, in the
+ * Residency status page's words and with its links. It used to tell every one of them that a household reviewer
+ * must confirm their request, which is not so for a Home nobody else lives in. That sentence stays only while the
+ * answer is loading or can't be read.
+ */
+function ResidencyPanel({ homeId, onReload, onMoveOut }: { homeId: string; onReload: () => void | Promise<void>; onMoveOut: () => void }) {
+  const router = useRouter();
+  const { progress } = useResidencyProgress(homeId);
+  const next = progress ? residencyNextStep(progress, homeId) : null;
+  return (
+    <div className="max-w-lg mx-auto px-4 py-12">
+      <div className="flex justify-center mb-6">
+        <div className="w-20 h-20 rounded-full flex items-center justify-center text-3xl bg-blue-100">{'\u23F3'}</div>
+      </div>
+      <h2 className="text-2xl font-bold text-app-text text-center mb-3">
+        {next ? next.title : 'Your residency request is under review'}
+      </h2>
+      <p className="text-app-text-secondary text-center text-[15px] leading-relaxed mb-8 max-w-sm mx-auto">
+        {next ? next.body : 'A household reviewer must confirm your request before you can open this home. Check for updates below.'}
+      </p>
+      {next && next.actions.length > 0 && <div className="space-y-3">
+        {next.actions.map(action => (
+          <ActionButton key={action.label} label={action.label} description="" icon="&#8594;"
+            onClick={() => (action.href === `/app/homes/${homeId}/dashboard` ? void onReload() : router.push(action.href))} />
+        ))}
+      </div>}
+      <AlwaysVisibleActions homeId={homeId} onMoveOut={onMoveOut} onReload={onReload} />
+    </div>
+  );
+}
+
+function AlwaysVisibleActions({ homeId, onMoveOut, onReload }: { homeId: string; onMoveOut: () => void; onReload: () => void | Promise<void> }) {
+  const router = useRouter();
+  const handleMoveOut = onMoveOut;
+  const reload = onReload;
+  return (
+    <>
       {/* Always-visible actions */}
       <div className="mt-8 space-y-2">
         <button
@@ -211,7 +261,7 @@ export default function VerificationCenter({ homeId, onRefresh }: VerificationCe
           Check for updates
         </button>
       </p>
-    </div>
+    </>
   );
 }
 
@@ -241,7 +291,7 @@ function ActionButton({
       <span className="text-xl flex-shrink-0">{icon}</span>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-app-text">{label}</p>
-        <p className="text-xs text-app-text-secondary mt-0.5">{description}</p>
+        {description && <p className="text-xs text-app-text-secondary mt-0.5">{description}</p>}
       </div>
       {loading ? (
         <span className="animate-spin inline-block w-4 h-4 border-2 border-app-border border-t-gray-600 rounded-full flex-shrink-0" />
@@ -300,9 +350,11 @@ function getStatusConfig(
       return {
         icon: '\uD83D\uDCC4',
         iconBg: 'bg-amber-100',
-        title: 'Your document is under review',
+        // This state outlasts the claim: it also shows after a claim was declined, withdrawn or closed for having no
+        // document, when nothing is under review. So the words hold either way.
+        title: 'Verify with a document',
         // No review time is promised while document review is undecided (founder, 2026-10-06).
-        body: 'Your uploaded documents are waiting for a Pantopus reviewer.',
+        body: 'A Pantopus reviewer checks the document you upload, and you get a notification when it\'s decided. If you haven\'t uploaded one yet, add it below.',
       };
     case 'provisional':
       if (access?.is_in_challenge_window) {

@@ -66,6 +66,8 @@ public struct ReinventedListItemDTO: Decodable, Sendable, Identifiable {
     public let content: Content
     /// A Moment its author kept ("Keep this?", CONTRACT 6d): drawn as a post that stays.
     public let kept: Bool
+    /// A post's travel (CONTRACT 8f): passed on, carried here, an Eyes-on Ask's window; whose it is.
+    public let travel: ReinventedTravelDTO?
 
     private enum CodingKeys: String, CodingKey {
         case type, id, band, moment, post, kept
@@ -76,6 +78,7 @@ public struct ReinventedListItemDTO: Decodable, Sendable, Identifiable {
         id = try c.decode(String.self, forKey: .id)
         band = try? c.decodeIfPresent(String.self, forKey: .band)
         kept = (try? c.decodeIfPresent(Bool.self, forKey: .kept)) ?? false
+        travel = try? c.decodeIfPresent(ReinventedTravelDTO.self, forKey: .post)
         switch try c.decode(String.self, forKey: .type) {
         case "moment": content = try .moment(c.decode(MomentDTO.self, forKey: .moment))
         case "post": content = try .post(c.decode(FeedPostDTO.self, forKey: .post))

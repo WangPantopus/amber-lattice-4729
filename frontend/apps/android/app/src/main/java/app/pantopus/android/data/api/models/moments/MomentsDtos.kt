@@ -1,5 +1,7 @@
 package app.pantopus.android.data.api.models.moments
 
+import app.pantopus.android.data.api.models.reinvented.MomentPlanDto
+import app.pantopus.android.data.api.models.reinvented.MomentRepliesStateDto
 import com.squareup.moshi.FromJson
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -171,6 +173,14 @@ data class MomentDto(
     @Json(name = "stamp_choices") val stampChoices: Map<String, MomentStampValueDto?>? = null,
     /** "Pulse, reinvented" (CONTRACT 5b): a guess-the-spot Moment's guesses, for a reader whose switch is on; else null. */
     val guess: MomentGuessStateDto? = null,
+    /** "Pulse, reinvented" (CONTRACT 6d): "Keep this?" is offered on the author's own Moment; false from today's server. */
+    @Json(name = "keep_offer") val keepOffer: Boolean = false,
+    /** "Pulse, reinvented" (CONTRACT 6g): the plan started from it that this reader may see in Plans; else null. */
+    val plan: MomentPlanDto? = null,
+    /** "Pulse, reinvented" (CONTRACT 8a): replies people can see on it, for a reader whose switch is on; else null. */
+    val replies: MomentRepliesStateDto? = null,
+    /** "Pulse, reinvented" (CONTRACT 7h): the people its caption mentions, for a reader whose switch is on; else null. */
+    val mentions: List<MomentAuthorDto>? = null,
 )
 
 /**
@@ -395,6 +405,10 @@ data class CreateMomentBody(
     val elevation: MomentAltitudeBody? = null,
     /** The Studio's "Guess the spot" (CONTRACT 5a): `true` only when picked; left out otherwise. */
     val guess: Boolean? = null,
+    /** The Studio drawer's "Also show in Explore" (CONTRACT 6f): `true` only when chosen; left out otherwise. */
+    val explore: Boolean? = null,
+    /** The Studio's mentions (CONTRACT 7h): up to five person ids named in the caption; left out otherwise. */
+    val mentions: List<String>? = null,
 )
 
 /**

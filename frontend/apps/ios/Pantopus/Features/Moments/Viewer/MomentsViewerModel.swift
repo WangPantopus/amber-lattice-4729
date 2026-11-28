@@ -19,7 +19,7 @@ import UIKit
 final class MomentsViewerModel {
     private(set) var rings: [MomentRingDTO]
     private(set) var ringIndex: Int
-    private(set) var momentIndex: Int
+    var momentIndex: Int // also set by a step deck's scrub ("Pulse, reinvented", `MomentDeckStrip`)
     private(set) var moment: MomentDTO?
     private(set) var load: Load = .loading
     private(set) var image: UIImage?
@@ -237,13 +237,13 @@ final class MomentsViewerModel {
     }
 
     private func play(_ url: URL, of detail: MomentDTO) {
-        if !muted { try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback) }
+        if !muted, detail.loopSpan == nil { try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback) }
         video.isMuted = muted
         video.onReady = { [weak self] in
             guard let self, started, brief?.id == detail.id else { return }
             ready(detail.id)
         }
-        video.load(url, id: detail.id)
+        video.load(url, id: detail.id, loop: detail.loopSpan)
     }
 
     private func fail(_ id: String, _ failure: MomentsFailure?) {
@@ -281,7 +281,7 @@ final class MomentsViewerModel {
         guard started, load == .ready, let moment else { return }
         if moment.kind == .video {
             if isPaused { video.pause() } else { video.play() }
-            return
+            guard moment.loopSpan != nil else { return } // A loop (CONTRACT 7j) is timed as a photo.
         }
         guard !isPaused else { return }
         let seconds = duration(of: moment)

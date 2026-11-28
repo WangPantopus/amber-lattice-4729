@@ -936,6 +936,9 @@ const supabaseAdmin = {
     if (['bind_payment_customer', 'save_payment_method', 'set_default_payment_method', 'begin_payment_method_removal', 'complete_payment_method_removal'].includes(args[0])) {
       return require('./paymentMethods')(args[0], args[1], getTable);
     }
+    // The people search index is verified against a live stack; route fixtures have none, as on a database that
+    // hasn't had the migration, and exercise the route's own reads.
+    if (args[0] === 'person_search') return { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.person_search in the schema cache' } };
     return { data: null, error: { message: 'No RPC mock configured' } };
   },
   auth: {

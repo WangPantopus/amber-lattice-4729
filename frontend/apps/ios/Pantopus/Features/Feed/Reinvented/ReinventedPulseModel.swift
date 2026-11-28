@@ -74,6 +74,8 @@ final class ReinventedPulseModel {
     private(set) var reach = "around"
     private(set) var miles = 25
     private(set) var chip = "all"
+    /// One of the person's circles inside Close circle (CONTRACT 8d); nil is all their connections.
+    private(set) var circle: ReinventedCirclePick?
     let cards: ProfilePostCardsModel
 
     @ObservationIgnored private var items: [ReinventedListItemDTO] = []
@@ -99,7 +101,11 @@ final class ReinventedPulseModel {
         let cardsById = Dictionary(cards.cards.map { ($0.id, $0) }) { first, _ in first }
         var rows: [Row] = []
         var lastBand: String?
+        // A Retake is one row (CONTRACT 8e): its first frame in the list opens the whole Retake.
+        var retakes = Set<String>()
         for (index, item) in items.enumerated() {
+            if case let .moment(moment) = item.content, let retake = moment.together.retake,
+               !retakes.insert(retake.startId).inserted { continue }
             if reach == "explore", index == 0, pickedCount > 0 { rows.append(.heading("Today, elsewhere")) }
             if reach == "explore", index == pickedCount, pickedCount > 0 { rows.append(.heading("New elsewhere")) }
             if let band = item.band, band != lastBand, let line = bands.first(where: { $0.band == band }) {
@@ -120,6 +126,16 @@ final class ReinventedPulseModel {
 
     var hasMore: Bool {
         cursor != nil
+    }
+
+    /// The person watching (for "Pass it on", never on their own post).
+    var viewer: String? {
+        viewerId
+    }
+
+    /// A post's travel (CONTRACT 8f): who passed it on or carried it here, an Eyes-on Ask's window.
+    func travel(of postId: String) -> ReinventedTravelDTO? {
+        items.first { $0.id == postId }?.travel
     }
 
     /// The Moment's author is the person watching.
@@ -149,11 +165,15 @@ final class ReinventedPulseModel {
         await refresh()
     }
 
-    func pick(reach: String, miles: Int) async {
-        guard reach != self.reach || miles != self.miles else { return }
+    func pick(reach: String, miles: Int, circle: ReinventedCirclePick? = nil) async {
+        guard reach != self.reach || miles != self.miles || circle != self.circle else { return }
         self.reach = reach
         self.miles = miles
+        self.circle = reach == "close" ? circle : nil
         chip = "all"
+        // What the pill now names, never the last reach's rows under it: loading until it comes, or why it didn't.
+        items = []
+        cursor = nil
         await refresh()
     }
 
@@ -168,7 +188,8 @@ final class ReinventedPulseModel {
             miles: reach == "around" ? miles : nil,
             chip: chip,
             at: here.map { ($0.latitude, $0.longitude) },
-            cursor: cursor
+            cursor: cursor,
+            circle: reach == "close" ? circle?.id : nil
         )
         guard let data = await fetch(endpoint) else { return }
         guard let page = try? JSONDecoder().decode(ReinventedListResponse.self, from: data) else {
@@ -193,6 +214,10 @@ final class ReinventedPulseModel {
         case 200..<300:
             ReinventedServer.shared.clear()
             return response.data
+        case 404 where circle != nil && Self.code(response.data) == "CIRCLE_NOT_FOUND":
+            // A circle the person is no longer in: back to all their connections, not to today's Pulse.
+            circle = nil
+            Task { await refresh() }
         case 404:
             ReinventedServer.shared.markBehind()
         case 403:
@@ -201,6 +226,10 @@ final class ReinventedPulseModel {
             if items.isEmpty { load = .failed("Couldn't load Pulse. Try again.") }
         }
         return nil
+    }
+
+    private static func code(_ data: Data) -> String? {
+        ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["code"] as? String
     }
 
     /// Explore (CONTRACT 6f): the picked ten on the first page, then newest with variety, pausing at "Keep exploring?".

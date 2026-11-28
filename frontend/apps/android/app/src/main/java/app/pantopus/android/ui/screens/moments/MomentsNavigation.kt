@@ -23,10 +23,21 @@ object MomentsRoutes {
     /** The full-screen viewer (V1 to V5). Its queue comes from the map ([app.pantopus.android.data.moments.MomentsPlayback]). */
     const val WATCH = "moments/watch"
 
+    /** Photos and videos shared from another app, by their names in the share folder, joined with commas. */
+    const val SHARED_KEY = "shared"
+
     /** Posting (P1 to P4): the camera first, or the Library or Text tab with `mode`. */
-    const val COMPOSE = "moments/compose?$MODE_KEY={$MODE_KEY}"
+    const val COMPOSE = "moments/compose?$MODE_KEY={$MODE_KEY}&$SHARED_KEY={$SHARED_KEY}"
 
     fun compose(mode: String = "camera"): String = "moments/compose?$MODE_KEY=$mode"
+
+    /**
+     * Posting what another app's share sheet handed to Pantopus ([app.pantopus.android.sharein.ShareInActivity]): once
+     * where you are and the 18+ question are settled, the first one takes the Post screen as if picked from the
+     * library, and each of the others after it.
+     */
+    fun composeShared(files: List<String>): String =
+        "moments/compose?$MODE_KEY=camera&$SHARED_KEY=${android.net.Uri.encode(files.joinToString(","))}"
 
     /** Screens with the whole window: no tab bar under the viewer or the camera. */
     val fullScreen: Set<String> = setOf(WATCH, COMPOSE)
@@ -87,6 +98,10 @@ fun NavGraphBuilder.momentsRoutes(
                 navArgument(MomentsRoutes.MODE_KEY) {
                     type = NavType.StringType
                     defaultValue = "camera"
+                },
+                navArgument(MomentsRoutes.SHARED_KEY) {
+                    type = NavType.StringType
+                    defaultValue = ""
                 },
             ),
     ) {

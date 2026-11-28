@@ -35,6 +35,9 @@ final class MomentsNavigator {
 
     /// A Moment to play once the Moments tab shows.
     var pending: String?
+    /// A photo or video shared from another app, for the composer to open with once the Moments tab shows
+    /// (`ShareInCoordinator`).
+    var pendingShare: MomentsSharedMedia?
 
     private init() {}
 }
@@ -47,6 +50,26 @@ struct MomentsComposeRequest: Identifiable {
     /// "Pulse, reinvented" was on for the person when + was tapped: the Studio (`MomentsStudioComposer`) opens, and
     /// stays while the switch stays on (`MomentsComposerChoice`). Off, today's composer.
     var studio = false
+    /// Shared from another app: the composer takes it once it may take anything (`MomentsComposerChoice`).
+    var shared: MomentsSharedMedia?
+}
+
+/// One photo or video another app's share sheet handed to Pantopus, as a file. It becomes the draft once
+/// (`taken`), however often a fold on the iPhone Duo builds the composer again.
+@MainActor
+final class MomentsSharedMedia: Equatable {
+    let file: URL
+    let isVideo: Bool
+    var taken = false
+
+    init(file: URL, isVideo: Bool) {
+        self.file = file
+        self.isVideo = isVideo
+    }
+
+    nonisolated static func == (lhs: MomentsSharedMedia, rhs: MomentsSharedMedia) -> Bool {
+        lhs === rhs
+    }
 }
 
 public struct MomentsTabRoot: View {
@@ -103,9 +126,19 @@ public struct MomentsTabRoot: View {
                 composing = nil
                 showsAreaPicker = false
                 navigator.pending = nil
+                navigator.pendingShare = nil
             }
         }
         .onChange(of: navigator.pending, initial: true) { _, _ in playLinked() }
+        // Shared from another app into Moments: the composer opens with it.
+        .onChange(of: navigator.pendingShare, initial: true) { _, shared in
+            guard flags.moments, composing == nil, let shared else { return }
+            navigator.pendingShare = nil
+            showsAreaPicker = false
+            composing = MomentsComposeRequest(
+                model: MomentsComposerModel(), studio: PulseReinventedFlags.shared.isOn, shared: shared
+            )
+        }
         // A link that came while a Moment was being written waits for the composer to close.
         .onChange(of: composing == nil) { _, _ in playLinked() }
         // A fold or a turn switches layouts at once (the card and the cover trade places without sliding).

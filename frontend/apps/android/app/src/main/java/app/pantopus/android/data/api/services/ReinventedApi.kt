@@ -1,12 +1,20 @@
 package app.pantopus.android.data.api.services
 
+import app.pantopus.android.data.api.models.moments.MomentEnvelope
+import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedAtlasResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedExploreResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedKeepBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMapResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedMomentPlanResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedStrandsResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedStrandsSeenBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
+import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -16,6 +24,7 @@ import retrofit2.http.Query
  * caller, each answers `403 PULSE_REINVENTED_OFF`; a server from before them answers 404. A point, where one is sent, is
  * the phone's own place, rounded to five places, as the web and iPhone send it.
  */
+@Suppress("TooManyFunctions") // The new Pulse's routes, one router on the server (`backend/routes/reinvented.js`).
 interface ReinventedApi {
     /**
      * `GET /api/reinvented/list` (CONTRACT 6a): the Moments that fade and the posts that stay a reader may see, by reach
@@ -85,6 +94,43 @@ interface ReinventedApi {
     @DELETE("api/reinvented/atlas/{id}")
     suspend fun deleteForGood(
         @Path("id") id: String,
+    )
+
+    /**
+     * `POST /api/reinvented/moments/:id/keep` (CONTRACT 6d): the author answers "Keep this?" once; answers the Moment.
+     * Route `backend/routes/reinvented.js` (moments/:id/keep).
+     */
+    @POST("api/reinvented/moments/{id}/keep")
+    suspend fun keep(
+        @Path("id") id: String,
+        @Body body: ReinventedKeepBody,
+    ): MomentEnvelope
+
+    /**
+     * `POST /api/reinvented/moments/:id/plan` (CONTRACT 6g), "Want to come?": the author starts a plan in Plans from
+     * their own live Moment, with exactly the body `POST /api/plans` takes and Plans' own rules, answers and errors. The
+     * query says what this app can draw, as `PlansBizInterceptor` adds it under `/api/plans`. Never a business's plan.
+     * Route `backend/routes/reinvented.js` (moments/:id/plan).
+     */
+    @POST("api/reinvented/moments/{id}/plan")
+    suspend fun startPlan(
+        @Path("id") id: String,
+        @Body body: CreatePlanBody,
+        @Query("more") more: String = "1",
+        @Query("guests") guests: String = "1",
+        @Query("extras") extras: String = "1",
+    ): ReinventedMomentPlanResponse
+
+    /** `GET /api/reinvented/strands` (CONTRACT 8c): "Went because of you", told to the reader only. */
+    @GET("api/reinvented/strands")
+    suspend fun strands(
+        @Query("cursor") cursor: String?,
+    ): ReinventedStrandsResponse
+
+    /** `POST /api/reinvented/strands/seen` (CONTRACT 8c): the groups' items the reader has now seen. */
+    @POST("api/reinvented/strands/seen")
+    suspend fun strandsSeen(
+        @Body body: ReinventedStrandsSeenBody,
     )
 
     companion object {

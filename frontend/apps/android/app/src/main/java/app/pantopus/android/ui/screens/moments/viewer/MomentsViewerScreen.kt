@@ -145,6 +145,13 @@ import app.pantopus.android.ui.components.ToastController
 import app.pantopus.android.ui.components.ToastHost
 import app.pantopus.android.ui.components.keepsKeyboard
 import app.pantopus.android.ui.screens.feed.pulseReportReasons
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentKeepThis
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentPinsOverlay
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentPlanMenuItem
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentPlanOffer
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentRepliesChip
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentRepliesState
+import app.pantopus.android.ui.screens.feed.reinvented.after.keepWaits
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.MomentFace
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
@@ -263,7 +270,9 @@ fun MomentsViewerScreen(
     val touched = handling || holding || typing || reacting
     val paused =
         touched || menuOpen || reporting || confirmingBlock || seenByOpen || confirmingDelete || away || covered ||
-            editing != null || updatedNote || guessing || (studio && moment?.guessWaits(mine) == true)
+            editing != null || updatedNote || guessing || (studio && moment?.guessWaits(mine) == true) ||
+            (studio && moment?.keepWaits(mine) == true) ||
+            (studio && MomentRepliesState.open.value)
     // Play picks up where it was; a Moment whose time ran out during the pause says so instead.
     LaunchedEffect(paused) { if (!paused) viewModel.endedOnScreen() }
     val view = LocalView.current
@@ -570,7 +579,15 @@ fun MomentsViewerScreen(
                             enabled = !typing && !reacting && !turning && !leaving,
                             place = picturePlace,
                             onHold = { holding = it },
-                            onTap = { x, width -> if (x < width / 3f) viewModel.previous() else viewModel.next() },
+                            onTap = { x, width ->
+                                if (studio && MomentRepliesState.open.value) {
+                                    Unit
+                                } else if (x < width / 3f) {
+                                    viewModel.previous()
+                                } else {
+                                    viewModel.next()
+                                }
+                            },
                             onPage = { x ->
                                 settling?.cancel()
                                 handling = true
@@ -649,6 +666,7 @@ fun MomentsViewerScreen(
                                 onFailed = viewModel::next,
                             )
                             if (studio) MomentStampsOverlay(load.moment)
+                            if (studio) MomentPinsOverlay(load.moment)
                         }
                     ViewerLoad.Loading -> Unit
                     ViewerLoad.Ended ->
@@ -688,22 +706,29 @@ fun MomentsViewerScreen(
                 )
                 // The caption gives way to the quick reactions while they are up.
                 moment?.caption?.takeIf { it.isNotBlank() && moment.kind != "text" && !typing && !reacting }?.let { caption ->
-                    Text(
-                        text = caption,
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        lineHeight = 21.sp,
-                        textAlign = TextAlign.Center,
-                        modifier =
-                            Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(start = Spacing.s10, end = Spacing.s10, bottom = 63.dp)
-                                .clip(RoundedCornerShape(Radii.lg))
-                                .background(PantopusColors.momentCaptionPill)
-                                .padding(horizontal = 14.dp, vertical = Spacing.s2)
-                                .testTag("moments.viewer.caption"),
-                    )
+                    val pill =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(start = Spacing.s10, end = Spacing.s10, bottom = 63.dp)
+                            .clip(RoundedCornerShape(Radii.lg))
+                            .background(PantopusColors.momentCaptionPill)
+                            .padding(horizontal = 14.dp, vertical = Spacing.s2)
+                            .testTag("moments.viewer.caption")
+                    // "Pulse, reinvented" (CONTRACT 7h): the mentioned names open their profiles; today's caption otherwise.
+                    val mentioned = if (studio) moment.mentions.orEmpty() else emptyList()
+                    if (mentioned.isNotEmpty()) {
+                        MomentMentionCaption(caption, mentioned, { person -> person.profileOpener(onOpenProfile)?.invoke() }, pill)
+                    } else {
+                        Text(
+                            text = caption,
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 21.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = pill,
+                        )
+                    }
                 }
             }
 
@@ -767,6 +792,9 @@ fun MomentsViewerScreen(
                     MomentMetaPills(moment = shown, modifier = Modifier.padding(start = 58.dp, top = 2.dp, end = 12.dp))
                     // "Pulse, reinvented": guess the spot.
                     if (studio) MomentGuessPill(shown, mine, onOpen = { guessing = true }, Modifier.padding(start = 58.dp, top = 6.dp))
+                    if (studio) MomentKeepThis(shown, mine, Modifier.padding(start = 58.dp, top = 6.dp, end = 12.dp))
+                    if (studio) MomentPlanOffer(shown, mine, onClose = { close() }, Modifier.padding(start = 58.dp, top = 6.dp))
+                    if (studio) MomentRepliesChip(shown, mine, Modifier.padding(start = 58.dp, top = 6.dp))
                 }
             }
             // How high it was made, down the right edge (`MomentsViewerHeights.kt`). It takes no touch, and gives way
@@ -1511,6 +1539,7 @@ private fun OwnMenuItems(
             modifier = Modifier.testTag("moments.menu.edit"),
         )
     }
+    MomentPlanMenuItem()
     DropdownMenuItem(
         text = { Text("Save to Photos", color = Color.White) },
         leadingIcon = {

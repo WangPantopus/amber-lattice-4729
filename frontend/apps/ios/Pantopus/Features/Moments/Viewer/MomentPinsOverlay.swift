@@ -15,6 +15,8 @@ struct MomentPinsOverlay: View {
     let picture: CGSize?
     private let store = MomentPinsStore.shared
     @State private var reporting: MomentPinDTO?
+    /// The open card's height: a drop card with a voice and cutouts is taller, and it keeps clear of its spot.
+    @State private var cardHeight: CGFloat = 0
 
     var body: some View {
         if PulseReinventedFlags.shared.isOn, moment.together.replies?.shown == true {
@@ -44,12 +46,14 @@ struct MomentPinsOverlay: View {
                         let shown = Self.shown(in: geo)
                         let width = min(shown.width - 32, 320)
                         let half = width / 2 + 16
+                        let gap = max(110, cardHeight / 2 + 24)
                         cardView(card)
                             .frame(width: width)
                             .fixedSize(horizontal: false, vertical: true)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
                             .position(
                                 x: min(max(anchor.x, shown.minX + half), max(shown.maxX - half, shown.minX + half)),
-                                y: anchor.y > shown.minY + shown.height * 0.55 ? anchor.y - 110 : anchor.y + 110
+                                y: anchor.y > shown.minY + shown.height * 0.55 ? anchor.y - gap : anchor.y + gap
                             )
                     }
                 }
@@ -153,7 +157,9 @@ struct MomentPinsOverlay: View {
                 .accessibilityIdentifier("moments.pins.close")
             }
             switch card {
-            case .drop: signalsRow
+            case .drop:
+                signalsRow
+                MomentPinsMoreRow(moment: moment)
             case let .pin(pin): pinActions(pin)
             }
             if let note = store.note {
@@ -171,7 +177,7 @@ struct MomentPinsOverlay: View {
 
     private func cardTitle(_ card: Card) -> String {
         switch card {
-        case .drop: "Drop a reaction here"
+        case .drop: "Drop a pin here"
         case let .pin(pin): pin.author.map { $0.name.isEmpty ? "Someone" : $0.name } ?? "Someone"
         }
     }

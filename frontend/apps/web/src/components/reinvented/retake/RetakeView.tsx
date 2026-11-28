@@ -149,9 +149,10 @@ export default function RetakeView({
             )}
             <div className="rt-actions">
               {r!.want_to_go > 0 && <span className="rt-note">{r!.want_to_go} want to go</span>}
+              {/* `can_add` is false only for the 6-hour rule (CONTRACT 8e): say that, in the server's own words. */}
               {r!.can_add ? (
                 <>
-                  <span className="rt-note">Your frame stays in this Retake.</span>
+                  <span className="rt-note">Stand where the first picture was taken to add your frame. It stays in this Retake.</span>
                   <button
                     type="button"
                     className="rt-add"
@@ -161,7 +162,7 @@ export default function RetakeView({
                   </button>
                 </>
               ) : (
-                <span className="rt-note">Stand where the first picture was taken to add a frame.</span>
+                <span className="rt-note">You added a frame here a little while ago. Come back later in the day.</span>
               )}
             </div>
           </>

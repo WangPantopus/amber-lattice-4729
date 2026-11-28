@@ -1677,3 +1677,23 @@ theirs. What was found, what the website now has and what only Google decides ar
 - [ ] **The website** (this pull request): Sign up and Sign in pages a search engine can read under their own names; new pages Get the app (`/download`), Pricing (`/pricing`) and Help (`/help`); every public page's footer links the same main sections under the same words; each Christmas card has its own description, and `/cards` says "digital Christmas cards and ecards to send online"; the address lookup and the tax check carry the name Pantopus in their titles.
 - [ ] **Yours:** the eight steps under "The founder's steps" in [the search guide](docs/seo/README.md), each with where to click: promote, ask Google and Bing to read the new pages, the brand's profiles, the repository's website field, the store listings, the Business Profile (only if Pantopus has an office that receives people), and links from other sites.
 - [ ] Not checked: what Google and Bing hold today (only you can open Search Console and Bing Webmaster Tools), staging and production after the merge, and how fast the pages load for real visitors (Google's field data needs more visits than the site has).
+
+## Pantopus in other apps' share sheets (added November 27)
+
+You asked on November 27 that Pantopus be one of the choices when someone shares a photo from Photos (or a link from a browser, or anything from any app), near the top, and that it then offers its own places the way Instagram offers Reel, Post, Story and Message.
+
+- [ ] **iPhone and Android** (this pull request): Pantopus is in the share sheet for photos, videos (up to ten at once), links and words. Tapping it shows "Sharing as <name>" and a card for each place the thing can go, each drawn with the shared picture: **Moment**, **Pulse**, **Message**, **Mail** and **Plan**. A tap opens the app on that place with the picture already there:
+  1. Moment: the composer's Post screen, pinned where the photo's own location says it was taken. While "Pulse, reinvented" is on for a person there is no Moment card and Pulse's card opens the Studio, since that build has one camera.
+  2. Pulse: the post composer with the photos attached and any shared words or link written in.
+  3. Message: the "Send in a chat" picker, then that chat with the picture waiting in its composer.
+  4. Plan: a list of the plans the person hosts or is in; the one picked opens its chat the same way.
+  5. Mail: the Christmas card flow, with a line saying the photo is waiting; it goes on the card at "Write on the back". Only while cards are open and the card can take a photo (a bought stamp, one person).
+  A card shows only for a place that is on for the person and can take what was shared (a link offers Pulse, Message and Plan). Nobody signed in: "Sign in to Pantopus first".
+- [ ] **Near the top.** Neither iOS nor Android lets an app choose its place in the share sheet: both order it by what the person uses. What an app can do is in this pull request:
+  1. Android: Moment, Pulse, Message, Plan and the chats a person sends messages in are published as direct-share targets. On the emulator the system share sheet showed "Post as a Moment", "Post to Pulse" and "Send in a message" in its top row, and Pantopus first among the apps, after three shares.
+  2. iPhone: each chat a person sends a message in is told to iOS, which is how a person or group appears in the row above the apps. In Photos on the simulator Pantopus moved to the first place in the row of apps after a few shares.
+- [x] **The share extension's App ID and App Store profile** (November 27, at your request): registered and stored; the record is in [the release checklist](docs/release/prod-config-checklist.md).
+- [ ] **Yours:**
+  1. On a real iPhone, after the next TestFlight build: send a message in a Pantopus chat, then open Photos → Share. That person should be offered in the top row with the Pantopus mark. The simulator never shows that row, so nobody has seen it yet.
+  2. On a phone where Pantopus has never been shared to, it can sit further along the row of apps, or under "More" on iPhone, until it is used once or twice. Nothing in the code can change that.
+- [ ] Not checked: the suggested-people row on an iPhone (above); Mail on Android (the emulator's server had Christmas cards off; iPhone's was tried against a second local server with cards on, up to the photo sitting on the card, and the card was not sent); the signed-out screen on iPhone (Android's was seen); the Studio path while "Pulse, reinvented" is on; physical phones; a signed Release archive with the fourth iPhone target.

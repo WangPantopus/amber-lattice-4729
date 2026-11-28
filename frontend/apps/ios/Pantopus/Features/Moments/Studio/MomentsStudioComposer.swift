@@ -39,6 +39,13 @@ struct MomentsComposerChoice: View {
                 MomentsComposer(model: request.model, onClose: onClose)
             }
         }
+        // Shared from another app: it becomes the draft once where you are and the 18+ question are settled, as
+        // nothing can be taken, picked or written before both.
+        .onChange(of: request.model.gate == .open, initial: true) { _, open in
+            guard open, let shared = request.shared, !shared.taken else { return }
+            shared.taken = true
+            Task { await request.model.use(shared: shared.file, isVideo: shared.isVideo) }
+        }
         // Today's composer knows nothing of a made-up name: going back, the Moment is the person's own again.
         .onChange(of: reinvented.isOn) { _, isOn in
             if !isOn {
@@ -51,9 +58,24 @@ struct MomentsComposerChoice: View {
                 // Nor today's post kinds: a picked kind's words go back to the caption.
                 request.model.clearStudioKind()
                 request.model.marking.studio = nil
+                // Nor Guess the spot or a step deck: they live beside the Studio's tools, and today's server refuses
+                // both keys while the switch is off. The refusal's words go too: today's sheet starts clean.
+                request.model.studioGuess = false
+                request.model.studioDeck = nil
+                if request.model.error == Self.switchedOffWords { request.model.error = nil }
             }
         }
+        // A Studio post refused because the switch is off (403 `PULSE_REINVENTED_OFF`, CONTRACT 1, whose words the
+        // Studio shows): the switch is read again at once, so today's Post sheet takes the draft now, not at the next
+        // time the app comes to the front.
+        .onChange(of: request.model.error) { _, words in
+            guard words == Self.switchedOffWords, request.studio, reinvented.isOn else { return }
+            Task { await PulseReinventedFlags.shared.recheck() }
+        }
     }
+
+    /// The server's words for `403 PULSE_REINVENTED_OFF` (CONTRACT 1).
+    static let switchedOffWords = "This isn't on for you right now."
 }
 
 struct MomentsStudioComposer: View {
@@ -147,6 +169,9 @@ struct MomentsStudioComposer: View {
         } message: {
             Text(model.marking.marks.isEmpty ? "How you resized it won't be saved." : "What you drew or wrote on it won't be saved.")
         }
+        // Retake: what was made on that picture goes with it (`dropPictureTools`). Here, not on the stage, which leaves
+        // the screen while the camera shows.
+        .onChange(of: model.draft == nil) { _, gone in if gone { model.dropPictureTools() } }
         .readsMomentsDuoScreen(Binding(get: { duo }, set: { screen in
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -157,6 +182,8 @@ struct MomentsStudioComposer: View {
     }
 
     private func posted() {
+        // The next picture starts without this one's dots, items and sound.
+        model.dropPictureTools()
         Task { if await !model.moveOn() { onClose() } }
     }
 

@@ -143,7 +143,8 @@ internal fun MomentMarks.changedState(
     val across = { x: Float -> if (wide) 0.5f + (x - 0.5f) * by else x }
     val down = { y: Float -> if (wide) y else 0.5f + (y - 0.5f) * by }
     val widths = if (wide) by else 1f
-    return MomentMarks(
+    // A copy, so what else the marks hold (the Studio's subject and film look) comes along.
+    return copy(
         strokes =
             strokes.map { stroke ->
                 val points = stroke.points.mapIndexed { at, v -> if (at % 2 == 0) across(v) else down(v) }

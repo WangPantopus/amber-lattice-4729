@@ -559,6 +559,11 @@ function startJobs(options = {}) {
     scheduled: true,
     timezone: 'UTC',
   });
+  // Hourly at :47: a claim the person filed themself that has had no document for 30 days closes, and they are told.
+  scheduleCron('47 * * * *', wrapJob('closeClaimsWithoutDocuments', () => claimDocumentReminders.closeUndocumented()), {
+    scheduled: true,
+    timezone: 'UTC',
+  });
 
   // ─── Process Quorum Actions (owner votes) ───
   // Runs hourly at :33.

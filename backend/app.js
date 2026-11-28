@@ -70,6 +70,7 @@ const {
 const { apmMiddleware, getMetrics } = require('./middleware/apm');
 const dbTiming = require('./utils/dbTiming');
 const { getSnapshot: getAddressVerificationMetrics } = require('./services/addressValidation/addressVerificationMetrics');
+const { getSnapshot: getPeopleSearchMetrics } = require('./services/personSearch');
 
 // Import socket server
 const chatSocketio = require('./socket/chatSocketio');
@@ -406,6 +407,7 @@ app.get('/api/health/metrics', (req, res) => {
     memory_mb: Math.round(process.memoryUsage().rss / 1024 / 1024),
     routes: getMetrics(),
     address_verification: getAddressVerificationMetrics(),
+    people_search: getPeopleSearchMetrics(),
     vendor_calls_today: require('./services/propertyRecords/counts').vendorsToday(),
   });
 });

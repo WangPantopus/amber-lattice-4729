@@ -60,10 +60,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -144,6 +146,8 @@ internal fun MomentsStudioStep(
     onPhotostrip: () -> Unit = {},
     onTrayOpen: () -> Unit = {},
     lookPicture: StateFlow<Bitmap?> = NO_LOOK_PICTURE,
+    // Mentions (step 5, CONTRACT 7h): a person picked after "@" in the caption.
+    onMention: (StudioMention) -> Unit = {},
     gate: MomentsStudioGateViewModel = hiltViewModel(),
     penNames: PenNameChoiceViewModel = hiltViewModel(),
 ) {
@@ -243,6 +247,16 @@ internal fun MomentsStudioStep(
             StudioGuessLine(state)
             // A caption goes with a photo or a video; a text card is its own words.
             if (state.media != null) {
+                // After "@" at the end of the caption: the author's connections (never under a made-up name).
+                StudioMentionRow(
+                    caption = state.caption,
+                    madeUp = state.madeUp,
+                    onPick = { person ->
+                        onCaption(captionWithMention(state.caption, person))
+                        onMention(person)
+                    },
+                    modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, bottom = Spacing.s2),
+                )
                 StudioCaption(
                     caption = state.caption,
                     enabled = !state.posting,
@@ -526,9 +540,19 @@ internal fun StudioCaption(
     modifier: Modifier = Modifier,
 ) {
     val style = TextStyle(color = Color.White, fontSize = 21.sp, lineHeight = 27.sp, fontWeight = FontWeight.Bold, shadow = OnPicture)
+    // The words with the cursor; a change from outside (a mention picked) puts the cursor at the end, after the name.
+    var field by remember { mutableStateOf(TextFieldValue(caption, TextRange(caption.length))) }
+    var seen by remember { mutableStateOf(caption) }
+    if (caption != seen) {
+        seen = caption
+        if (caption != field.text) field = TextFieldValue(caption, TextRange(caption.length))
+    }
     BasicTextField(
-        value = caption,
-        onValueChange = onCaption,
+        value = field,
+        onValueChange = { next ->
+            field = next
+            if (next.text != caption) onCaption(next.text)
+        },
         enabled = enabled,
         textStyle = style,
         maxLines = 3,

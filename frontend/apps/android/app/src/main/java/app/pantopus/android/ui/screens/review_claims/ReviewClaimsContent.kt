@@ -147,6 +147,14 @@ object AdminClaimChip {
                 )
             }
         }
+        if (claim.waitingOn == "claimant") {
+            // Filed with nothing attached (adding a home as its owner does that): nothing to review yet.
+            return AdminClaimChipDescriptor(
+                text = "No document yet",
+                icon = PantopusIcon.Hourglass,
+                variant = StatusChipVariant.Neutral,
+            )
+        }
         val ageDays = ageDays(claim.createdAt, referenceInstant)
         return if (ageDays != null && ageDays >= AGING_THRESHOLD_DAYS) {
             AdminClaimChipDescriptor(

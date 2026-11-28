@@ -25,6 +25,8 @@ struct MomentsStudioRail: View {
     var openIlluminate: (() -> Void)?
     /// Blur before posting (phase 2, `MomentsStudioBlurSheet`).
     var openBlur: (() -> Void)?
+    /// Loop (phase 0 step 5, `MomentsStudioLoopSheet`): a short piece of the video, over and over.
+    var openLoop: (() -> Void)?
     /// Sound (phase 2): Voice Spark or place sound (`MomentsStudioSoundSheet`).
     var openSound: (() -> Void)?
 
@@ -55,6 +57,11 @@ struct MomentsStudioRail: View {
                 tool("Sound", id: "moments.studio.rail.sound") {
                     Icon(.mic, size: 19, strokeWidth: 2.2, color: .white)
                 } action: { openSound() }
+            }
+            if let openLoop, model.offersLoop {
+                tool(model.studioLoop == nil ? "Loop" : "Loop on", id: "moments.studio.rail.loop") {
+                    Icon(.repeat2, size: 19, strokeWidth: 2.2, color: .white)
+                } action: { openLoop() }
             }
             if let openBlur, model.offersBlur {
                 tool("Blur", id: "moments.studio.rail.blur") {

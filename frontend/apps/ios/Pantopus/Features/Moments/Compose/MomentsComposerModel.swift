@@ -99,7 +99,7 @@ final class MomentsComposerModel {
     /// The Sky's "Share later": the choice picked (`1h`, `3h`, `tonight`); nil posts now.
     var shareLaterKey: String?
     /// When the album photo or video was taken (any time); nil for the camera, a text card, or a file that never said.
-    private(set) var takenAt: Date?
+    var takenAt: Date?
     /// The rest of what was picked together in the library, in the order picked (`+Several`): each takes the sheet
     /// when the one before it has posted. And how many were picked together.
     var waiting: [PHAsset] = []
@@ -135,7 +135,7 @@ final class MomentsComposerModel {
     /// The fix the camera and text card pin at.
     @ObservationIgnored var fix: (coordinate: UserCoordinate, at: Date)?
     /// Where and when a library photo or video was taken.
-    @ObservationIgnored private(set) var capture: MediaCaptureLocation?
+    @ObservationIgnored var capture: MediaCaptureLocation?
     /// How high the fix, and the library photo or video, say it was (`+Height`).
     @ObservationIgnored var fixHeight: HeightReading?
     @ObservationIgnored var captureHeight: HeightReading?
@@ -215,7 +215,7 @@ final class MomentsComposerModel {
         previewSettled = true
     }
 
-    private func preview(latitude: Double, longitude: Double) async {
+    func preview(latitude: Double, longitude: Double) async {
         do {
             let reply: MomentPlacePreviewDTO = try await MomentsAPI.send(MomentsEndpoints.placePreview(
                 latitude: latitude,
@@ -305,7 +305,7 @@ final class MomentsComposerModel {
         if let point { await preview(latitude: point.latitude, longitude: point.longitude) }
     }
 
-    private func useVideo(_ url: URL) async {
+    func useVideo(_ url: URL) async {
         let seconds = await MomentsMediaExport.duration(of: url)
         guard seconds <= MomentsMediaExport.longestVideoSeconds + MomentsMediaExport.videoSecondsTolerance else {
             error = MomentsFailure.mediaTooLong.message

@@ -240,3 +240,34 @@ struct MomentDotMark: View {
         .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 1)
     }
 }
+
+extension View {
+    /// Reads the Studio's video's size and length as soon as it is the draft (Text and Draw read them only when they
+    /// open). Without them a video's dots, stamps and items were placed over the screen, while the viewer lays them over
+    /// the video's frame filling the screen (a 9:16 video runs about 45 points past each side of an iPhone): a dot put
+    /// near an edge landed off the reader's screen.
+    func studioReadsVideoSize(_ model: MomentsComposerModel) -> some View {
+        task(id: model.draft?.video) {
+            guard case let .video(url) = model.draft, model.marking.video == nil else { return }
+            guard let shown = await MomentsMediaExport.shown(url), model.draft == .video(url), model.marking.video == nil else { return }
+            model.marking.opened(video: shown.size, seconds: shown.seconds)
+        }
+    }
+}
+
+extension MomentsComposerModel {
+    /// What the Studio put on one picture goes with it: Retake, or the next of several picked (each step of a deck has
+    /// its own). Before this, a dot, an item or a voice made on one picture came back on the next and was posted again.
+    /// The tools' own settings (pen, letters, inks), Explore and the kind picked stay for the Studio's whole visit.
+    func dropPictureTools() {
+        guard var tools = marking.studio else { return }
+        (tools.dots, tools.pickedDot) = ([], nil)
+        (tools.play, tools.pickedPlay) = ([], nil)
+        (tools.cutouts, tools.pickedCutout) = ([], nil)
+        (tools.voice, tools.voiceWords, tools.place, tools.whispers) = (nil, "", nil, [:])
+        (tools.blur, tools.pair) = (nil, nil)
+        (tools.look, tools.lookOriginal, tools.lookResult) = (.original, nil, nil)
+        tools.mentioned = []
+        marking.studio = tools
+    }
+}

@@ -1,9 +1,15 @@
 package app.pantopus.android.data.pulse
 
+import app.pantopus.android.data.api.models.moments.MomentEnvelope
+import app.pantopus.android.data.api.models.plans.CreatePlanBody
+import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedAtlasResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedExploreResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedKeepBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMapResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedStrandsResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedStrandsSeenBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
@@ -79,6 +85,26 @@ class ReinventedRepository
 
         /** Delete for good (CONTRACT 6e): a Moment held for review answers 409 with the server's words. */
         suspend fun deleteForGood(momentId: String): NetworkResult<Unit> = guarded(behindOn404 = false) { api.deleteForGood(momentId) }
+
+        /** "Keep this?" answered (CONTRACT 6d): yes keeps it as a post that stays, for the same people. */
+        suspend fun keep(
+            momentId: String,
+            keep: Boolean,
+        ): NetworkResult<MomentEnvelope> = guarded(behindOn404 = false) { api.keep(momentId, ReinventedKeepBody(keep)) }
+
+        /** "Want to come?" (CONTRACT 6g): the plan from the author's own Moment, answered as `POST /api/plans` answers. */
+        suspend fun startPlan(
+            momentId: String,
+            body: CreatePlanBody,
+        ): NetworkResult<PlanDto> = guarded(behindOn404 = false) { api.startPlan(momentId, body).plan }
+
+        /** "Went because of you" (CONTRACT 8c). An older server's 404 only leaves the section out. */
+        suspend fun strands(cursor: String?): NetworkResult<ReinventedStrandsResponse> =
+            guarded(behindOn404 = false) { api.strands(cursor) }
+
+        /** Marks the strands the reader has seen (CONTRACT 8c); they stay listed. */
+        suspend fun strandsSeen(ids: List<String>): NetworkResult<Unit> =
+            guarded(behindOn404 = false) { api.strandsSeen(ReinventedStrandsSeenBody(ids = ids)) }
 
         private suspend fun <T> guarded(
             behindOn404: Boolean = true,

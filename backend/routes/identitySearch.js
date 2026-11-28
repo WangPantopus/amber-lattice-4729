@@ -11,6 +11,7 @@ const {
   getPersonaFollow,
   getLocalProfileByUserId,
   localProfileVisibilityFor,
+  displayNameFromUser,
 } = require('../utils/identityProfiles');
 const {
   serializeAudienceProfileForViewer,
@@ -24,6 +25,7 @@ const {
 } = require('../utils/visibilityPolicy');
 const { hasBlocked } = require('../services/blockService');
 const { isKnownMadeUpUsername } = require('../utils/personalUsername');
+const { findPersonCandidates, checkedSearchPeople } = require('../services/personSearch');
 
 router.use(requireIdentityFirewallEnabled);
 
@@ -366,6 +368,34 @@ async function publicProfileResult(persona, followState) {
   };
 }
 
+// The scores above (scoreRow), by the search index's tier: exact, starts with, a word starts with it, a word contains
+// it, a close spelling.
+const INDEX_TIER_SCORES = [0, 5, 10, 20, 40];
+
+/**
+ * Local profile results for the search index's candidates. checkedSearchPeople (services/personSearch.js) reads each
+ * one again and applies today's privacy rules, in one round for all of them. A person with no Local Profile row is
+ * shown by one made from their account, the way identityProfiles.getLocalProfileByHandle makes one for the profile
+ * page their result opens.
+ */
+async function localResultsFromIndex(candidates, viewerId) {
+  const people = await checkedSearchPeople({ candidates, viewerId });
+  const results = [];
+  for (const { account, profile, tier } of people) {
+    const result = await localProfileResult(profile || {
+      id: `legacy-local-${account.id}`,
+      user_id: account.id,
+      handle: account.username,
+      display_name: displayNameFromUser(account),
+      avatar_url: account.profile_picture_url || null,
+      show_neighborhood: false,
+    });
+    if (!result) continue;
+    results.push({ ...result, score: INDEX_TIER_SCORES[tier] ?? 40 });
+  }
+  return results;
+}
+
 function sortResults(results) {
   return results.sort((a, b) => {
     if (a.score !== b.score) return a.score - b.score;
@@ -392,7 +422,14 @@ router.get('/search', verifyToken, identitySearchLimiter, async (req, res) => {
     const patterns = Array.from(new Set([queryText, tokens[0]].filter(Boolean)));
     const results = [];
 
-    if (scope === 'all' || scope === 'local_profiles') {
+    // The search index answers the local profiles in one call. A database that has no index yet is searched the way
+    // it was before.
+    const indexed = scope === 'all' || scope === 'local_profiles'
+      ? await findPersonCandidates({ viewerId, query: queryText, kind: 'profiles', limit })
+      : null;
+    if (indexed) {
+      results.push(...await localResultsFromIndex(indexed, viewerId));
+    } else if (scope === 'all' || scope === 'local_profiles') {
       const localCandidates = await searchTableFields({
         table: 'LocalProfile',
         fields: LOCAL_SEARCH_FIELDS,

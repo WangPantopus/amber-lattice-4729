@@ -109,6 +109,8 @@ internal fun ReinventedAtlasList(
                 modifier = Modifier.padding(horizontal = Spacing.s1, vertical = Spacing.s3),
             )
         }
+        // "Went because of you" (CONTRACT 8c), private to the Atlas's owner; nothing when there are none.
+        item(span = { GridItemSpan(maxLineSpan) }, key = "strands") { ReinventedStrandsSection() }
         days.forEach { (day, dayMoments) ->
             item(span = { GridItemSpan(maxLineSpan) }, key = "day-$day") {
                 Text(

@@ -47,7 +47,8 @@ import app.pantopus.android.ui.theme.Spacing
 /**
  * Over the map: the top row (the side menu, the scope pill, the chat button), the big List | Map switch (the middle
  * height reads as List), and the chips the place has. Drawn on the page's background at the List height; over the map
- * each control floats on its own.
+ * each control floats on its own. Side by side on a wide window ([sideBySide]) it sits over the list's column, and both
+ * List and Map read as lit while both are shown.
  */
 @Composable
 @Suppress("LongParameterList") // What it shows and the five choices it offers.
@@ -62,10 +63,12 @@ internal fun ReinventedPulseHeader(
     onPickTime: (String) -> Unit,
     atlas: Boolean = false,
     onAtlas: (Boolean) -> Unit = {},
+    sideBySide: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var showsDial by rememberSaveable { mutableStateOf(false) }
-    val onList = height == ReinventedHeight.List
+    // Over the list (its own background, buttons in line) rather than floating over the map.
+    val onList = height == ReinventedHeight.List || (sideBySide && height == ReinventedHeight.Middle)
     Column(
         modifier =
             modifier
@@ -84,7 +87,7 @@ internal fun ReinventedPulseHeader(
             ScopePill(state, onClick = { showsDial = true }, modifier = Modifier.weight(1f))
             Floating(!onList) { MessagesButton(testTag = "reinventedPulse.chat") }
         }
-        ViewSwitch(height, atlas, onHeight, onAtlas)
+        if (sideBySide) SideBySideSwitch(height, atlas, onHeight, onAtlas) else ViewSwitch(height, atlas, onHeight, onAtlas)
         // My Atlas has no chips and no time row.
         if (atlas) return@Column
         if (height == ReinventedHeight.Map) {
@@ -198,6 +201,48 @@ private fun ViewSwitch(
         SwitchButton("Atlas", PantopusIcon.Layers, on = atlas) {
             onAtlas(true)
             if (height == ReinventedHeight.Map) onHeight(ReinventedHeight.Middle)
+        }
+    }
+}
+
+/**
+ * The switch side by side: List and Map are both lit while both are shown; a tap on one shows it alone, and a tap on the
+ * lit one again goes back to both.
+ */
+@Composable
+private fun SideBySideSwitch(
+    height: ReinventedHeight,
+    atlas: Boolean,
+    onHeight: (ReinventedHeight) -> Unit,
+    onAtlas: (Boolean) -> Unit,
+) {
+    val shape = RoundedCornerShape(percent = 50)
+    val listOn = !atlas && height != ReinventedHeight.Map
+    val mapOn = !atlas && height != ReinventedHeight.List
+    Row(
+        modifier =
+            Modifier
+                .padding(horizontal = Spacing.s4)
+                .fillMaxWidth()
+                .clip(shape)
+                .background(PantopusColors.appSurface)
+                .border(1.dp, PantopusColors.appBorder, shape)
+                .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        // Out of My Atlas, either goes back to both.
+        SwitchButton("List", PantopusIcon.List, on = listOn) {
+            onAtlas(false)
+            onHeight(if (atlas || height == ReinventedHeight.List) ReinventedHeight.Middle else ReinventedHeight.List)
+        }
+        SwitchButton("Map", PantopusIcon.Map, on = mapOn) {
+            onAtlas(false)
+            onHeight(if (atlas || height == ReinventedHeight.Map) ReinventedHeight.Middle else ReinventedHeight.Map)
+        }
+        // My Atlas: the person's own kept Moments in the list's column, beside the map of them.
+        SwitchButton("Atlas", PantopusIcon.Layers, on = atlas) {
+            onAtlas(true)
+            onHeight(ReinventedHeight.Middle)
         }
     }
 }

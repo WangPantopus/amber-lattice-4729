@@ -260,6 +260,7 @@ fun MomentsComposeScreen(
                         onPhotostrip = viewModel::photostrip,
                         onTrayOpen = viewModel::readLookPicture,
                         lookPicture = viewModel.marksPicture,
+                        onMention = viewModel::addMention,
                     )
                 } else {
                     ReviewStep(
@@ -424,7 +425,10 @@ private fun CameraStep(
     onText: () -> Unit,
     onNotice: (String?) -> Unit,
 ) {
-    LaunchedEffect(hasCamera, state.gate) { if (!hasCamera && state.gate == ComposeGate.Open) askCamera() }
+    // Not while something shared from another app is about to take the Post screen: it needs no camera.
+    LaunchedEffect(hasCamera, state.gate, state.sharedWaiting) {
+        if (!hasCamera && state.gate == ComposeGate.Open && !state.sharedWaiting) askCamera()
+    }
     val controller = remember { MomentsCameraController() }
     var front by remember { mutableStateOf(false) }
     var flash by remember { mutableStateOf(false) }

@@ -2,6 +2,7 @@ package app.pantopus.android.ui.screens.feed.reinvented
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.pantopus.android.data.api.models.moments.MomentGuessSpotDto
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.data.api.models.plans.PlanPinDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedKeptDto
@@ -74,6 +75,8 @@ data class ReinventedMapState(
     val deck: List<ReinventedMapItem> = emptyList(),
     /** The card the deck shows, and the pin it lights. */
     val focused: String? = null,
+    /** Guess the spot in the area (CONTRACT 5d): a list under the time row, never marks. */
+    val guessSpots: List<MomentGuessSpotDto> = emptyList(),
 ) {
     /** Heads-ups last, so they draw over everything else. */
     val drawOrder: List<ReinventedMapItem> get() = items.filterNot { it.headsUp } + items.filter { it.headsUp }
@@ -176,7 +179,10 @@ class ReinventedMapViewModel
                                 val lng = ticket.longitude ?: return@mapNotNull null
                                 ReinventedMapItem.Ticket(ticket, lat, lng)
                             }
-                    _state.update { if (it.time == time) it.copy(items = items, deck = arrange(it.deck, items, area)) else it }
+                    val spots = map.guessSpots.filter { it.momentId != null }
+                    _state.update {
+                        if (it.time == time) it.copy(items = items, deck = arrange(it.deck, items, area), guessSpots = spots) else it
+                    }
                 }
         }
 

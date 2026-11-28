@@ -66,4 +66,18 @@
             android:targetClass="app.pantopus.android.MainActivity"
             android:targetPackage="APPLICATION_ID" />
     </shortcut>
+    <!-- Sharing shortcuts (ShareInShortcuts): a photo, video, link or words shared to one of Pantopus's places or
+         chats from the share sheet's top row opens ShareInActivity with that shortcut's id. -->
+    <share-target android:targetClass="app.pantopus.android.sharein.ShareInActivity">
+        <data android:mimeType="image/*" />
+        <category android:name="app.pantopus.android.sharein.category.SHARE_TARGET" />
+    </share-target>
+    <share-target android:targetClass="app.pantopus.android.sharein.ShareInActivity">
+        <data android:mimeType="video/*" />
+        <category android:name="app.pantopus.android.sharein.category.SHARE_TARGET" />
+    </share-target>
+    <share-target android:targetClass="app.pantopus.android.sharein.ShareInActivity">
+        <data android:mimeType="text/plain" />
+        <category android:name="app.pantopus.android.sharein.category.SHARE_TARGET" />
+    </share-target>
 </shortcuts>

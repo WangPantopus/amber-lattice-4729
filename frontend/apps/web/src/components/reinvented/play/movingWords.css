@@ -1,0 +1,97 @@
+/* Moving words over a photo (CONTRACT §7k). Sizes are container units of the picture's width (the play layer's), as
+   the other playable items: at scale 1 the words are about 28/402 of the width tall, and wrap inside most of it. */
+.pl-item[data-kind='moving_words'] {
+  width: max-content;
+}
+/* For readers the words are only drawn: a tap goes through to the viewer (in the Studio the author still drags them). */
+.pl-item[data-kind='moving_words']:not([data-edit]) {
+  pointer-events: none;
+}
+.mw-words {
+  margin: 0;
+  width: max-content;
+  max-width: 86cqw;
+  font-size: 2em;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+  text-shadow:
+    0 0.04em 0.12em rgba(0, 0, 0, 0.55),
+    0 0 0.4em rgba(0, 0, 0, 0.25);
+  transform-origin: center;
+  pointer-events: none;
+  user-select: none;
+}
+.mw-said {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.mw-word {
+  display: inline-block;
+  white-space: nowrap;
+}
+.mw-letter {
+  display: inline-block;
+  white-space: pre;
+}
+.mw-words[data-motion='drift'] {
+  animation: mw-drift 3.2s ease-in-out infinite;
+}
+.mw-words[data-motion='pulse'] {
+  animation: mw-pulse 1.8s ease-in-out infinite;
+}
+.mw-words[data-motion='wave'] .mw-letter {
+  animation: mw-wave 1.6s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+@keyframes mw-drift {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-0.2em);
+  }
+}
+@keyframes mw-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+@keyframes mw-wave {
+  0%,
+  55%,
+  100% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(-0.3em);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mw-words,
+  .mw-letter {
+    animation: none !important;
+  }
+}
+/* The Studio's form: letterings and motions as chips that wrap. */
+.pl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+/* In the Studio the smaller / larger / remove bar sits above the words, not over them. */
+.pl-item[data-kind='moving_words'] .pl-edit-bar {
+  top: auto;
+  bottom: calc(100% + 0.3em);
+  right: 50%;
+  transform: translateX(50%);
+}

@@ -148,7 +148,8 @@ extension MomentsSubject {
 // MARK: - Your cutouts, kept on this phone
 
 /// The cutouts lifted on this phone, newest first, as pictures in the app's own folder: never sent anywhere until one
-/// is posted inside a photo. The 24 newest are kept.
+/// is posted inside a photo. The 24 newest are kept, per account: another account signed in on this phone has its own,
+/// and with nobody signed in none are kept or listed.
 @MainActor
 @Observable
 final class MomentsCutoutShelf {
@@ -161,17 +162,26 @@ final class MomentsCutoutShelf {
     }
 
     private(set) var kept: [Kept] = []
-    @ObservationIgnored private var loaded = false
+    /// The account whose cutouts `kept` holds.
+    @ObservationIgnored private var loadedFor: String?
 
+    /// The signed-in person's own folder; nil with nobody signed in.
     private static var folder: URL? {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+        guard let account = MomentsComposerModel.account else { return nil }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("StudioCutouts", isDirectory: true)
+            .appendingPathComponent(account, isDirectory: true)
     }
 
-    /// Reads the kept cutouts once per app run.
+    /// Reads the signed-in person's kept cutouts, once per account in an app run.
     func load() {
-        guard !loaded, let folder = Self.folder else { return }
-        loaded = true
+        let account = MomentsComposerModel.account
+        guard loadedFor != account || account == nil else { return }
+        loadedFor = account
+        guard let folder = Self.folder else {
+            kept = []
+            return
+        }
         let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ??
             []
         kept = files

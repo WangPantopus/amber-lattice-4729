@@ -504,6 +504,8 @@ internal fun TextTools(
     // "Pulse, reinvented"'s Studio: the ten letterings over the looks, and colours from the photo under the inks.
     studio: Boolean = false,
     photo: List<Int> = emptyList(),
+    // "Pulse, reinvented"'s Studio on a photo: "Behind" for the picked label (the subject lifted on the phone).
+    lift: SubjectLift? = null,
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         if (!editing.typing) {
@@ -535,6 +537,10 @@ internal fun TextTools(
             MomentLabelStyle.entries.forEach { style ->
                 StyleButton(style, on = style == editing.style, compact = editing.typing) { onEdit { it.styled(style) } }
             }
+        }
+        if (studio && lift != null) {
+            Spacer(Modifier.height(Spacing.s2))
+            StudioBehindRow(editing, onEdit, lift)
         }
         Spacer(Modifier.height(14.dp))
         Box(Modifier.keepsKeyboard()) {

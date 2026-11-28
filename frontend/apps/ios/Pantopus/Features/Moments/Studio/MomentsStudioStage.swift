@@ -40,6 +40,8 @@ struct MomentsStudioStage: View {
     @State private var blurByHand = false
     /// Sound (phase 2): Voice Spark or place sound.
     @State private var showsSound = false
+    /// Loop (phase 0 step 5): a short piece of the video, over and over.
+    @State private var showsLoop = false
 
     init(model: MomentsComposerModel, onPosted: @escaping () -> Void) {
         self.model = model
@@ -64,6 +66,7 @@ struct MomentsStudioStage: View {
                     openTray: openTray,
                     openIlluminate: openIlluminate,
                     openBlur: openBlur,
+                    openLoop: openLoop,
                     openSound: openSound
                 )
                 // Drawing blur boxes by hand: the rail steps aside for the bar with Done.
@@ -93,6 +96,8 @@ struct MomentsStudioStage: View {
             MomentsStudioBlurOffer(model: model, open: openBlur)
                 .padding(.horizontal, Spacing.s4)
                 .padding(.bottom, Spacing.s3)
+            // Illuminate's suggestion (phase 2, CONTRACT 7i): one chip, worked out on the phone.
+            MomentsStudioSuggestChip(model: model, openDrawer: openDrawer, openTray: openTray)
             if model.studioGuess, model.offersGuess {
                 MomentsStudioGuessNote()
                     .padding(.horizontal, Spacing.s4)
@@ -119,6 +124,7 @@ struct MomentsStudioStage: View {
                 MomentsStudioPicture(model: model)
                     .overlay { legibility }
                     .clipped()
+                TogetherStudioGhost(model: model) // Phase 3 (CONTRACT 8): a Retake's first picture to line up with.
                 // Cutouts (step 4): a long press lifts one; under the stamps.
                 MomentsStudioCutoutLayer(model: model)
                 // The stamps sit on the picture, under the X, the tools, the caption and the bar.
@@ -158,6 +164,7 @@ struct MomentsStudioStage: View {
                 .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
                 .environment(\.colorScheme, .dark)
         }
+        .studioLoopSheet(model: model, isPresented: $showsLoop)
         .sheet(isPresented: $showsBlur) {
             MomentsStudioBlurSheet(model: model) {
                 showsBlur = false
@@ -170,6 +177,8 @@ struct MomentsStudioStage: View {
             .presentationBackground { Theme.Color.appSurface.environment(\.colorScheme, .dark) }
             .environment(\.colorScheme, .dark)
         }
+        // A video's size, read as soon as it's in the Studio: its dots, stamps and items sit on the frame readers see.
+        .studioReadsVideoSize(model)
         // The photo is looked at for what to blur as soon as it's in the Studio, on the phone itself.
         .task(id: model.blurKey) { await model.findBlurSpots() }
         .sheet(isPresented: $showsTray) {
@@ -203,6 +212,12 @@ struct MomentsStudioStage: View {
         writing = false
         Keyboard.close()
         showsSound = true
+    }
+
+    private func openLoop() {
+        writing = false
+        Keyboard.close()
+        showsLoop = true
     }
 
     private func openBlur() {

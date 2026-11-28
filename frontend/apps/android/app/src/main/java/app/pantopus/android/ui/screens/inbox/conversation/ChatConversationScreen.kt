@@ -151,6 +151,7 @@ import app.pantopus.android.core.security.findFragmentActivity
 import app.pantopus.android.core.security.rememberAppLockManager
 import app.pantopus.android.data.ai.AIPdfCheck
 import app.pantopus.android.data.links.LinkPreview
+import app.pantopus.android.sharein.ShareInShortcuts
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.KeyboardResizeEffect
 import app.pantopus.android.ui.components.PrimaryButton
@@ -781,6 +782,18 @@ fun ChatConversationScreen(
                             showFanUpgradePrompt = true
                         } else {
                             viewModel.send()
+                            // The share sheet may offer this chat by name: a person's or a group's, never a
+                            // business inbox's, a creator's or fan's thread, or the assistant's.
+                            if (conversationMode == ChatConversationMode.Dm) {
+                                val app = lockContext.applicationContext
+                                val name = args.counterparty.displayName
+                                when (val thread = args.mode) {
+                                    is ChatThreadMode.Person -> ShareInShortcuts.chatUsed(app, "person", thread.otherUserId, name)
+                                    is ChatThreadMode.Room ->
+                                        if (thread.asBusinessUserId == null) ShareInShortcuts.chatUsed(app, "room", thread.id, name)
+                                    ChatThreadMode.Ai -> Unit
+                                }
+                            }
                         }
                     },
                     onAttach = {

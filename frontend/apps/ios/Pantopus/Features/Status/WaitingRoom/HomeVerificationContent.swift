@@ -199,7 +199,9 @@ public extension HomeVerificationContent {
         case .pendingPostcard: "Check your mailbox"
         case .provisionalBootstrap: "Limited access"
         case .pendingApproval: "Waiting for approval"
-        case .pendingDoc: "Document under review"
+        // This screen shows only when no claim is open (declined, withdrawn, or closed for having no document),
+        // so nothing is under review: the words hold whether or not a document was ever uploaded.
+        case .pendingDoc: "Verify with a document"
         case .provisional: isInChallengeWindow ? "Challenge window active" : "Provisional access"
         case .suspendedChallenged: "Access suspended"
         case .unverified: "Verification required"
@@ -221,8 +223,9 @@ public extension HomeVerificationContent {
         case .pendingApproval:
             "A household member needs to approve your request. Reopen this screen to check for updates."
         case .pendingDoc:
-            "Your uploaded documents are waiting for a Pantopus reviewer." +
-                (mailAvailable ? " Meanwhile, you can verify your address by mail." : "")
+            "A Pantopus reviewer checks the document you upload, and you get a notification when it\u{2019}s " +
+                "decided. If you haven\u{2019}t uploaded one yet, add it below." +
+                (mailAvailable ? " You can also verify your address by mail." : "")
         case .provisional:
             isInChallengeWindow
                 ? "Your access is provisional while existing members can review. " +

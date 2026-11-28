@@ -356,6 +356,8 @@ dependencies {
     implementation(libs.androidx.camera.video)
     // On-device QR decoding for the Add-Home wizard's "Scan WiFi QR".
     implementation(libs.mlkit.barcode.scanning)
+    // "Pulse, reinvented"'s Studio: the subject lift, on the phone; no install-time model (fetched on first use).
+    implementation(libs.play.services.mlkit.subject.segmentation)
     // EXIF orientation read for Snap & Sell photo normalization.
     implementation(libs.androidx.exifinterface)
     implementation(libs.androidx.browser)

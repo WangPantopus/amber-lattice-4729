@@ -2253,6 +2253,21 @@ export default function Studio({
                       onChange={(e) => setArt({ ...art, size: Number(e.target.value) })}
                     />
                   </label>
+                  {/* Moving words (CONTRACT 7k): the author's words over a photo, moving; never drawn into it. */}
+                  {playOn && canBlur && (
+                    <button
+                      type="button"
+                      className="st-chip"
+                      disabled={play.length >= MAX_PLAY || play.filter((p) => p.kind === 'moving_words').length >= 2}
+                      onClick={() => {
+                        setTool(null);
+                        setMaking('moving_words');
+                        setTrayOpen(true);
+                      }}
+                    >
+                      Moving words
+                    </button>
+                  )}
                 </>
               )}
               {tool !== 'resize' && (
@@ -2450,7 +2465,7 @@ export default function Studio({
                       </button>
                     )}
                     {!playOn && <p className="st-hint">Polls, boards and the rest go on a post with a photo, or on a Moment.</p>}
-                    {playOn && PLAY_MAKERS.filter((m) => m.kind !== 'before_after' || canPair).map((m) => (
+                    {playOn && PLAY_MAKERS.filter((m) => (m.kind !== 'before_after' || canPair) && (m.kind !== 'moving_words' || canBlur)).map((m) => (
                       <button key={m.kind} type="button" disabled={play.length >= MAX_PLAY} onClick={() => setMaking(m.kind)}>
                         <i aria-hidden="true" />
                         {m.label}

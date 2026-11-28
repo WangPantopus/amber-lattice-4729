@@ -32,9 +32,10 @@ extension MomentsViewerModel {
         return replies
     }
 
-    /// The viewer holds still while the replies are open, and while a pin is being dropped or one is open (8b).
+    /// The viewer holds still while the replies are open, while a pin is being dropped or one is open (8b), and while
+    /// a Retake is open over it (8e).
     var repliesOpen: Bool {
-        MomentRepliesPrompt.shared.open != nil || MomentPinsStore.shared.holds
+        MomentRepliesPrompt.shared.open != nil || MomentPinsStore.shared.holds || retakeOpen
     }
 
     /// In the author's Moment options: show the replies to everyone who sees it, or hide them. Nil where it isn't
@@ -73,10 +74,18 @@ struct MomentRepliesChip: View {
     private let prompt = MomentRepliesPrompt.shared
 
     var body: some View {
-        if let replies = model.shownReplies, let moment = model.moment {
-            HStack(spacing: Spacing.s2) {
-                chip(replies, moment: moment)
-                MomentPinControls(moment: moment, canDrop: replies.canReply)
+        // Phase 3's chips under the header: the replies and pins where replies show (8a, 8b), a Retake's (8e).
+        if let moment = model.moment, model.shownReplies != nil || Self.together(moment, mine: model.isMine) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Spacing.s2) {
+                    if let replies = model.shownReplies {
+                        chip(replies, moment: moment)
+                        MomentPinControls(moment: moment, canDrop: replies.canReply)
+                    }
+                    MomentRetakeChip(model: model)
+                    MomentSealMark(model: model)
+                }
+                .padding(.trailing, Spacing.s4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 58)
@@ -87,6 +96,12 @@ struct MomentRepliesChip: View {
                     .presentationDragIndicator(.visible)
             }
         }
+    }
+
+    /// Phase 3 has a chip for this Moment even where replies don't show: a Retake's (8e), the author's own seal (8g).
+    private static func together(_ moment: MomentDTO, mine: Bool) -> Bool {
+        guard PulseReinventedFlags.shared.isOn else { return false }
+        return moment.together.retake != nil || (mine && moment.together.seal?.open == false)
     }
 
     private func chip(_ replies: MomentRepliesDTO, moment: MomentDTO) -> some View {

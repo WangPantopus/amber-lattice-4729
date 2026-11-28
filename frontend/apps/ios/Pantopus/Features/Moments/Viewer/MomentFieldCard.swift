@@ -56,8 +56,7 @@ struct MomentFieldCardView: View {
         // One sheet per view: "Not right?" hangs on the actions, the guide here.
         .sheet(isPresented: $guiding) {
             MomentsFieldGuide { guiding = false }
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+                .overViewerSheet()
         }
     }
 

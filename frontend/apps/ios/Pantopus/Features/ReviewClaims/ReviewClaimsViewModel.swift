@@ -68,6 +68,19 @@ public final class ReviewClaimsViewModel: ListOfRowsDataSource {
         // top of list.
         let cached = rowsCache[.pending] ?? []
         guard bucket == .pending, !cached.isEmpty else { return nil }
+        // What a reviewer can act on, apart from claims waiting on the claimant for a document.
+        if let ready = pendingSummary?.ready, let waiting = pendingSummary?.waitingOnClaimant, waiting > 0 {
+            let waitingText = "\(waiting) waiting on the claimant"
+            if ready == 0 {
+                return BannerConfig(icon: .gavel, title: "Nothing to review right now", subtitle: waitingText, tint: .warning)
+            }
+            return BannerConfig(
+                icon: .gavel,
+                title: "\(ready) \(ready == 1 ? "claim" : "claims") to review",
+                subtitle: "Oldest: \(AdminClaimTimeFormat.oldestAge(pendingSummary?.oldestReadyAgeSeconds)) · \(waitingText)",
+                tint: .warning
+            )
+        }
         let pending = counts?.pending ?? cached.count
         let title = "\(pending) \(pending == 1 ? "claim" : "claims") awaiting review"
         return BannerConfig(
@@ -89,6 +102,14 @@ public final class ReviewClaimsViewModel: ListOfRowsDataSource {
     private var rowsCache: [AdminClaimBucket: [AdminClaimDTO]] = [:]
     private var counts: AdminClaimCountsResponse?
     private var oldestAgeSeconds: Int?
+    private var pendingSummary: PendingSummary?
+
+    /// The Pending page as the server counts it: claims a reviewer can act on now, and claims waiting on the claimant.
+    private struct PendingSummary {
+        let ready: Int
+        let waitingOnClaimant: Int
+        let oldestReadyAgeSeconds: Int?
+    }
 
     init(
         api: APIClient = .shared,
@@ -139,7 +160,16 @@ public final class ReviewClaimsViewModel: ListOfRowsDataSource {
                 AdminEndpoints.claims(bucket: bucket)
             )
             rowsCache[bucket] = response.claims
-            if bucket == .pending { oldestAgeSeconds = response.oldestAgeSeconds }
+            if bucket == .pending {
+                oldestAgeSeconds = response.oldestAgeSeconds
+                pendingSummary = response.readyCount.map {
+                    PendingSummary(
+                        ready: $0,
+                        waitingOnClaimant: response.waitingOnClaimantCount ?? 0,
+                        oldestReadyAgeSeconds: response.oldestReadyAgeSeconds
+                    )
+                }
+            }
             // Only rerender if the bucket is still the one in view —
             // a fast tab swap shouldn't blow the user's current tab away.
             if bucket == self.bucket { rebuild() }
