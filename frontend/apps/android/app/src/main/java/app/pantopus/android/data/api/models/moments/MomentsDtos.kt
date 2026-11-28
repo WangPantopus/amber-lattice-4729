@@ -192,6 +192,8 @@ data class MomentDto(
     val convergence: app.pantopus.android.data.api.models.reinvented.MomentConvergenceStateDto? = null,
     /** "Pulse, reinvented" (CONTRACT 8i): the pinboard it starts or is a piece of, for a reader whose switch is on; else null. */
     val pinboard: app.pantopus.android.data.api.models.reinvented.MomentPinboardStateDto? = null,
+    /** "Pulse, reinvented" (CONTRACT 8g): how it opens later, for a reader whose switch is on; else null. */
+    val seal: app.pantopus.android.data.api.models.reinvented.MomentSealStateDto? = null,
 )
 
 /**
