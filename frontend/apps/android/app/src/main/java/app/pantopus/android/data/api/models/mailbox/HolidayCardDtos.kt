@@ -140,6 +140,15 @@ data class HolidayCardMediaRules(
     val voice: CardMediaRule? = null,
     /** A photo or voice greeting goes only on a card sent with a bought stamp (founder 2026-11-11); absent on older servers. */
     @Json(name = "bought_stamp") val boughtStamp: CardBoughtStamp? = null,
+    /** The free photo or voice cards a person has, while the card improvements are on (cards-next Wave 2). */
+    @Json(name = "free_allowance") val freeAllowance: CardFreeAllowance? = null,
+)
+
+/** `media.free_allowance`: the first [limit] cards with a photo or greeting need no bought stamp; [remaining] are left. */
+@JsonClass(generateAdapter = true)
+data class CardFreeAllowance(
+    val limit: Int = 0,
+    val remaining: Int = 0,
 )
 
 /**

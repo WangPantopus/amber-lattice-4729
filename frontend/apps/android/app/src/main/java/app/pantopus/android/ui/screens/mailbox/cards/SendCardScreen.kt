@@ -532,6 +532,7 @@ private fun Steps(
     val to = form.to
     val design = cards.designs.firstOrNull { it.id == form.design }
     val keepingState by viewModel.signatureKeeper.state.collectAsStateWithLifecycle()
+    val mediaWords = cards.mediaWords(stamps, form)
     when (form.step) {
         SendCardStep.To -> ToStep(form, viewModel)
         SendCardStep.Pick -> PickStep(cards, form.design, onLarge = onLarge)
@@ -562,7 +563,8 @@ private fun Steps(
                         photos = photoCalls(cards, form, viewModel),
                         voice = form.voice,
                         voices = voiceCalls(cards, form, viewModel),
-                        buyStamp = onStampsForMedia.takeIf { cards.postageEnabled && cards.media?.boughtStamp?.toBuy == true },
+                        buyStamp = onStampsForMedia.takeIf { mediaWords.buyStamp },
+                        mediaWords = mediaWords,
                         noteHelp = viewModel.noteHelp.takeIf { cards.noteHelp },
                     )
                 }
