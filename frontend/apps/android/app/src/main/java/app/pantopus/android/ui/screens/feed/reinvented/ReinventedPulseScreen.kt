@@ -378,6 +378,7 @@ private fun ReinventedPulseLayout(
                             if (!atlas.on) mapModel.moved(box)
                         },
                         onOpen = open,
+                        beams = !atlas.on,
                     )
                 },
                 timeRow =
