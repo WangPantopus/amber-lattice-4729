@@ -253,7 +253,7 @@ private fun SliderForm(
     if (!dial) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             Pill("●", on = emoji == null, tag = "moments.studio.play.emoji.none") { emoji = null }
-            SLIDER_EMOJI.forEachIndexed { at, it -> Pill(it, on = emoji == it, tag = "moments.studio.play.emoji$at") { emoji = it } }
+            SLIDER_EMOJI.forEachIndexed { at, face -> Pill(face, on = emoji == face, tag = "moments.studio.play.emoji$at") { emoji = face } }
         }
     }
     val made =
