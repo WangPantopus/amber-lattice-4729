@@ -1059,8 +1059,8 @@ private fun photoCalls(
 
 /**
  * What Write on the back can do with a voice greeting (memories plan step 7): only with the key on, when `GET /cards`
- * says greetings can be added now, for one card to one person, and not when no bought stamp can be had. One already
- * added stays so it can be removed.
+ * says greetings can be added now, for one card to one person (a list too while `improved`), and not when no bought
+ * stamp can be had. One already added stays so it can be removed.
  */
 private fun voiceCalls(
     cards: HolidayCardsResponse,
@@ -1073,6 +1073,9 @@ private fun voiceCalls(
     return CardVoiceCalls(drafts::addVoice, drafts::retryVoice, drafts::removeVoice)
 }
 
-/** One card to one person, while a bought stamp is left or can be bought (not `media.bought_stamp` "unavailable"). */
+/**
+ * One card to one person (a list too while `improved`: Wave 2), while a bought stamp is left or can be bought (not
+ * `media.bought_stamp` "unavailable"; while `improved` it's left out as long as a free photo or voice card is left).
+ */
 private fun HolidayCardsResponse.mediaCanGo(form: SendCardForm): Boolean =
-    form.to !is CardRecipient.Several && media?.boughtStamp?.unavailable != true
+    (improved || form.to !is CardRecipient.Several) && media?.boughtStamp?.unavailable != true
