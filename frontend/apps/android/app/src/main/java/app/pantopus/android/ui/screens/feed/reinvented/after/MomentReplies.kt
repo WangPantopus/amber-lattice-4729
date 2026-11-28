@@ -255,7 +255,8 @@ private fun OtherChips(
 ) {
     // The crowd's chip shows once its scene is read: the first look asks for it.
     val crowd = rememberCrowdScene(moment) != null
-    if (moment.shownRetake == null && moment.shownConvergence == null && moment.shownPinboard == null && !crowd) return
+    val together = moment.shownRetake != null || moment.shownConvergence != null || moment.shownPinboard != null
+    if (!crowd && !together) return
     Row(modifier = modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
         MomentRetakeChip(moment, onClose)
         MomentConvergenceChip(moment, Modifier.padding(start = Spacing.s2))
