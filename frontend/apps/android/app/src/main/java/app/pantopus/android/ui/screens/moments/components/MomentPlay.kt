@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -68,6 +69,30 @@ import kotlin.math.roundToInt
  * and turn. The viewer holds still while the reader has one to answer. Only for a reader whose switch is on: the server
  * sends `play` only then, and the viewer draws this layer only then.
  */
+
+/** The band over the top of every Moment (its name row and chips) and the room kept at the picture's foot, dp. */
+private const val HEADER_DP = 112f
+private const val FOOT_DP = 16f
+
+/**
+ * Centred at ([x], [y]) px, then moved up or down only as far as needed for the card, drawn at [scale] about its centre,
+ * to sit between [top] and [bottom] px; it takes only its own size for touches.
+ */
+fun Modifier.centredBetween(
+    x: Float,
+    y: Float,
+    top: Float,
+    bottom: Float,
+    scale: Float,
+): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            val half = placeable.height * scale / 2f
+            val centre = y.coerceIn(top + half, (bottom - half).coerceAtLeast(top + half))
+            placeable.place((x - placeable.width / 2f).roundToInt(), (centre - placeable.height / 2f).roundToInt())
+        }
+    }
 
 /** The most letters in a board note (CONTRACT 7b). */
 private const val BOARD_NOTE_LETTERS = 60
@@ -154,7 +179,11 @@ fun MomentPlayLayer(
         val density = LocalDensity.current.density
         val unit = minOf(frame.width, box) / density / BASE_WIDTH_DP
         val edge = 60 * density
+        // Cards stay between the viewer's name row and chips (over the top of every Moment) and the picture's foot.
+        val top = HEADER_DP * density
+        val bottom = constraints.maxHeight - FOOT_DP * density
         items.forEach { item ->
+            val size = (item.scale.toFloat() * unit).coerceIn(0.4f, 2.5f)
             val x = (frame.left + item.x.toFloat() * frame.width).coerceIn(edge, (box - edge).coerceAtLeast(edge))
             val y = frame.top + item.y.toFloat() * frame.height
             MomentPlayCard(
@@ -178,9 +207,8 @@ fun MomentPlayLayer(
                     ),
                 modifier =
                     Modifier
-                        .centredAt(x, y)
+                        .centredBetween(x, y, top, bottom, size)
                         .graphicsLayer {
-                            val size = (item.scale.toFloat() * unit).coerceIn(0.4f, 2.5f)
                             scaleX = size
                             scaleY = size
                             rotationZ = item.rotation.toFloat()
