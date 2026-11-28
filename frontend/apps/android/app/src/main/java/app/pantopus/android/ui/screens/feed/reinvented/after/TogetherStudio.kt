@@ -21,7 +21,7 @@ import javax.inject.Inject
 /**
  * What the open Studio adds to the Moment it makes for "Pulse, reinvented" phase 3 ("together and back outside",
  * CONTRACT 8; iPhone's `TogetherStudio.swift`): what the Studio was opened for (a frame for someone's Retake, 8e) and the
- * person's own choices in the drawer (start a Retake). Each rides the create request as one more key ([TogetherCreate]).
+ * person's own choices in the drawer (start a Retake, join tonight's sky, start a pinboard). Each rides the create request as one more key ([TogetherCreate]).
  * Only while the switch is on, and only for the Studio on screen: today's Post screen never shows the rows, so it never
  * sends any of this, and with nothing chosen the request is exactly today's.
  */
@@ -40,6 +40,12 @@ internal object TogetherStudio {
             val askId: String,
             val question: String,
         ) : Context
+
+        /** Add a piece to a pinboard (8i): a photo, one per person. */
+        data class PinboardPiece(
+            val startId: String,
+            val prompt: String,
+        ) : Context
     }
 
     /** Set just before the Studio opens ([openFor]); dropped with the Studio's screen. */
@@ -54,6 +60,10 @@ internal object TogetherStudio {
     /** "Start a Retake" and its name (1 to 60 characters). */
     val startsRetake = mutableStateOf(false)
     val retakeTitle = mutableStateOf("")
+
+    /** "Start a pinboard" and its prompt (1 to 80 characters, 8i). */
+    val startsPinboard = mutableStateOf(false)
+    val pinboardPrompt = mutableStateOf("")
 
     /** The Studio's screen holding the choices: set by its stage ([TogetherStudioGhost]); null while none shows. */
     @Volatile internal var owner: TogetherStudioViewModel? = null
@@ -80,6 +90,8 @@ internal object TogetherStudio {
         joinsSky.value = true
         startsRetake.value = false
         retakeTitle.value = ""
+        startsPinboard.value = false
+        pinboardPrompt.value = ""
         opening.value = null
         pending = false
     }
@@ -94,19 +106,29 @@ internal object TogetherStudio {
             is Context.RetakeFrame -> if (photo) mapOf("retake_of" to opened.startId) else emptyMap()
             // An Eyes-on answer is a Live photo (8f); anything else posts as an ordinary Moment.
             is Context.EyesOnAnswer -> if (photo) mapOf("eyes_on_for" to opened.askId) else emptyMap()
+            // A pinboard's piece is a photo (8i); it may also join tonight's sky. Anything else posts as an ordinary Moment.
+            is Context.PinboardPiece ->
+                buildMap {
+                    if (photo) put("pinboard_of", opened.startId)
+                    if (joinsSky.value && state.offersSky) put("join_convergence", true)
+                }
             null -> {
                 val title = retakeTitle.value.trim().take(TITLE_MAX)
                 val starts = startsRetake.value && title.isNotEmpty() && state.offersRetake
+                val prompt = pinboardPrompt.value.trim().take(PROMPT_MAX)
+                val board = startsPinboard.value && prompt.isNotEmpty() && state.offersPinboard
                 buildMap {
                     if (starts) put("retake", mapOf("title" to title))
                     // The server decides whether a window is open; only a photo the author let join may join one.
                     if (joinsSky.value && state.offersSky) put("join_convergence", true)
+                    if (board) put("pinboard", mapOf("prompt" to prompt))
                 }
             }
         }
     }
 
     const val TITLE_MAX = 60
+    const val PROMPT_MAX = 80
 
     /** A Studio asked for longer ago than this is not opened any more (Pulse wasn't there to open it). */
     const val OPENING_MS = 15_000L
@@ -131,6 +153,15 @@ internal val MomentsComposeUiState.offersSky: Boolean
         media is MomentMediaFile.Photo && studioPair == null && audience == "nearby" && !noLocationOn && pin != null &&
             !floats && shareLaterKey == null && !madeUp && !guess && studioPostKind(StudioPostState.draft.value) == null &&
             place?.atHome != true
+
+/**
+ * "Start a pinboard" may be chosen (8i): one photo under the person's own name, not a guess spot, not a Pulse post. The
+ * server checks again (`400 PINBOARD_INVALID`).
+ */
+internal val MomentsComposeUiState.offersPinboard: Boolean
+    get() =
+        media is MomentMediaFile.Photo && studioPair == null && pickedTogether <= 1 && !madeUp && !guess &&
+            studioPostKind(StudioPostState.draft.value) == null
 
 /**
  * Holds the Studio's phase 3 choices for the screen it belongs to ([TogetherStudio.owner]), with what sends them. When the
