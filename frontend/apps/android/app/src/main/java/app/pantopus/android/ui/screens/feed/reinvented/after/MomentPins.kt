@@ -288,25 +288,9 @@ fun MomentPinsOverlay(
     BoxWithConstraints(Modifier.fillMaxSize().testTag("moments.viewer.pins")) {
         val box = IntSize(constraints.maxWidth, constraints.maxHeight)
         val frame = stampFrame(picture, box.width.toFloat(), box.height.toFloat())
-        if (dropping || spot != null) {
-            // The next tap on the picture marks the spot; the viewer doesn't turn the page meanwhile (its hold).
-            Box(
-                Modifier.fillMaxSize().pointerInput(frame) {
-                    detectTapGestures { at -> shareOf(at, frame, box)?.let { MomentPinsState.spot.value = it } }
-                }.testTag("moments.viewer.pins.surface"),
-            )
-        } else if (openId != null) {
-            // A tap anywhere else closes the open pin's card (a moment later, so that tap doesn't turn the page).
-            Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { later { MomentPinsState.open.value = null } } })
-        }
+        PinSurface(dropping || spot != null, openId != null, frame, box)
         if (!hidden) {
-            pins.forEach { pin ->
-                PinMark(pin, pointOf(pin.x, pin.y, frame)) {
-                    MomentPinsState.dropping.value = false
-                    MomentPinsState.spot.value = null
-                    if (openId == pin.id) later { MomentPinsState.open.value = null } else MomentPinsState.open.value = pin.id
-                }
-            }
+            pins.forEach { pin -> PinMark(pin, pointOf(pin.x, pin.y, frame)) { tapPin(pin.id, openId) } }
         }
         if (dropping && spot == null) {
             Hint("Tap a spot on the picture", Modifier.align(Alignment.Center))
@@ -320,6 +304,38 @@ fun MomentPinsOverlay(
             PinCard(pointOf(pin.x, pin.y, frame), box) { OpenPinCard(pin, ui.note, viewModel) }
         }
     }
+}
+
+/**
+ * What takes a tap on the picture while pins are in hand: while dropping, the next tap marks the spot; while a pin's card
+ * is open, a tap anywhere else closes it (a moment later, so that tap doesn't turn the page).
+ */
+@Composable
+private fun PinSurface(
+    dropping: Boolean,
+    cardOpen: Boolean,
+    frame: Rect,
+    box: IntSize,
+) {
+    if (dropping) {
+        Box(
+            Modifier.fillMaxSize().pointerInput(frame) {
+                detectTapGestures { at -> shareOf(at, frame, box)?.let { MomentPinsState.spot.value = it } }
+            }.testTag("moments.viewer.pins.surface"),
+        )
+    } else if (cardOpen) {
+        Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { later { MomentPinsState.open.value = null } } })
+    }
+}
+
+/** A tap on a pin opens its card, or closes it when it is the one open. */
+private fun tapPin(
+    id: String,
+    openId: String?,
+) {
+    MomentPinsState.dropping.value = false
+    MomentPinsState.spot.value = null
+    if (openId == id) later { MomentPinsState.open.value = null } else MomentPinsState.open.value = id
 }
 
 /**
