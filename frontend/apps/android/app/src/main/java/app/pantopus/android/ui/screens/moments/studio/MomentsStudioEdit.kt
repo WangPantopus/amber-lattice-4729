@@ -161,6 +161,7 @@ private class EditDraft(
     /** The ids whose "@Name" is still in the caption. */
     private fun named(): List<String> =
         if (madeUp) emptyList() else mentions.filter { mentionPlaces(caption, it.name).isNotEmpty() }.map { it.id }.distinct().take(5)
+
     var audience by mutableStateOf(moment.audience)
     var picked by mutableStateOf<String?>(null)
     var tray by mutableStateOf(false)
