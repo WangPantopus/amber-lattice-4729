@@ -50,8 +50,9 @@ public enum PostingActivityPhase: String, Codable, Hashable, Sendable {
 public struct PostingActivityAttributes: ActivityAttributes, Sendable {
     public struct ContentState: Codable, Hashable, Sendable {
         public var phase: PostingActivityPhase
-        /// How far the file is, 0 to 100, while the app can read it. Nil once it can't (iOS has paused the
-        /// app; the upload itself carries on): the card then shows no number, never an old one.
+        /// How far the file is, 0 to 100, while the app can read it and the number is following the upload.
+        /// Nil otherwise (iOS has paused the app, or took a small file whole at once; the upload itself
+        /// carries on): the card then shows no number, never an old or an empty one.
         public var percent: Int?
         /// A second line worded by the app: how long it shows for, when it shares, why it stopped.
         public var detail: String?
@@ -85,7 +86,7 @@ public enum PostingActivityContract {
     /// The second line when nothing of ours could run to finish it (the app was swiped away, or its last
     /// try failed with the app closed). The same words as the reminder notification.
     public static let unfinished = "Open Pantopus to finish it."
-    /// The second line while the file goes up and the app can't report how far it is.
+    /// The second line while the file goes up and there is no number to show for how far it is.
     public static let away = "It keeps going while you're away."
     /// The second line while the picture check runs.
     public static let checking = "It shows once a quick check is done."

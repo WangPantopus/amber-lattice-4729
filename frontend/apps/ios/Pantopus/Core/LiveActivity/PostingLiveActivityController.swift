@@ -15,6 +15,10 @@
 //    is then paused, while the upload itself carries on. The percent is
 //    shown only while the app can read it: once it can't, the card shows no
 //    number rather than an old one.
+//  - iOS counts a byte as sent when it takes it from the app, not when it
+//    arrives, and it takes a small file whole: a one-megabyte video read 99%
+//    in its first second with a minute still to go (seen in the simulator,
+//    2026-11-27). So a percent is shown only once it has been seen moving.
 //  - When the upload ends, iOS wakes the app and the card gets its last
 //    word. If nothing of ours ever runs again (the app was swiped away,
 //    which stops its uploads), the card's `staleDate` turns it to "didn't
@@ -37,8 +41,11 @@ final class PostingLiveActivityController {
         var phase = PostingActivityPhase.posting
         var parts = 1
         var percent = 0
-        /// What the card last showed, and when: it is told again a second later at the soonest.
-        var shown: Int?
+        /// When the first percent came, and whether a later one has come since (`movesAfter`): only then
+        /// does the number say how far the upload is, and only then is it shown.
+        var firstAt: Date?
+        var moves = false
+        /// When the card was last told: it hears the percent again a second later at the soonest.
         var shownAt = Date.distantPast
         /// When the card gives up by itself (`staleDate`).
         var giveUp: Date?
@@ -50,6 +57,9 @@ final class PostingLiveActivityController {
     private static let checkWait: TimeInterval = 15
     /// How long after the app leaves the screen the percent is still shown, at the most: iOS pauses the app soon after.
     private static let readsFor: TimeInterval = 20
+    /// A percent that is still rising this long after the first one is following the upload; one that jumped
+    /// and stopped was the system taking the file whole.
+    private static let movesAfter: TimeInterval = 1.5
     /// Back in the app with an upload still on its way: the card gives up this long from now, not sooner
     /// (as long as one try may take, `MomentsUploadReminder.delay`).
     private static let givesUpAgain: TimeInterval = 420
@@ -85,7 +95,8 @@ final class PostingLiveActivityController {
         var posting = postings[id] ?? Posting()
         posting.phase = .posting
         posting.parts = max(parts, 1)
-        posting.shown = nil
+        posting.firstAt = nil
+        posting.moves = false
         postings[id] = posting
         let content = content(id)
         enqueue { [weak self] in
@@ -115,8 +126,14 @@ final class PostingLiveActivityController {
         let percent = min(99, Int((whole * 100).rounded(.down)))
         guard percent > posting.percent else { return }
         posting.percent = percent
+        let now = Date()
+        if let firstAt = posting.firstAt {
+            if now.timeIntervalSince(firstAt) >= Self.movesAfter { posting.moves = true }
+        } else {
+            posting.firstAt = now
+        }
         postings[id] = posting
-        guard readsProgress, Date().timeIntervalSince(posting.shownAt) >= 1 else { return }
+        guard readsProgress, posting.moves, now.timeIntervalSince(posting.shownAt) >= 1 else { return }
         show(id)
     }
 
@@ -326,7 +343,7 @@ final class PostingLiveActivityController {
         let posting = postings[id] ?? Posting()
         let posts = posting.phase == .posting
         return ActivityContent(
-            state: CardState(phase: posting.phase, percent: posts && readsProgress ? posting.percent : nil),
+            state: CardState(phase: posting.phase, percent: posts && readsProgress && posting.moves ? posting.percent : nil),
             staleDate: posts ? posting.giveUp : nil
         )
     }
@@ -334,7 +351,6 @@ final class PostingLiveActivityController {
     /// The card is told where its upload stands now.
     private func show(_ id: String) {
         guard !isSuppressed, var posting = postings[id] else { return }
-        posting.shown = readsProgress ? posting.percent : nil
         posting.shownAt = Date()
         postings[id] = posting
         let content = content(id)
@@ -352,7 +368,7 @@ final class PostingLiveActivityController {
     }
 
     /// The card for this upload that hasn't had its last word.
-    private static func showing(_ id: String) -> Card? {
+    private nonisolated static func showing(_ id: String) -> Card? {
         Card.activities.first {
             $0.attributes.postingId == id && ($0.activityState == .active || $0.activityState == .stale)
         }
