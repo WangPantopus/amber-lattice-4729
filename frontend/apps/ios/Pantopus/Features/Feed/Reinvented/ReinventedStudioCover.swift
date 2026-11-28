@@ -41,6 +41,8 @@ final class ReinventedViewerPresenter {
     private(set) var closings = 0
 
     func close() {
+        // Closing by ✕ calls this, and the cover's binding calls it again as the cover goes: count it once.
+        guard watching != nil else { return }
         watching = nil
         closings += 1
         Task { await MomentsTabDot.shared.reread() }
