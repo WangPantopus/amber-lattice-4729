@@ -8,6 +8,7 @@ import com.squareup.moshi.JsonClass
  */
 @JsonClass(generateAdapter = true)
 data class MomentBackdropDto(
-    val top: String,
-    val bottom: String,
+    // Defaults, so an answer missing one colour still reads (the viewer then reads the picture's own colours).
+    val top: String = "",
+    val bottom: String = "",
 )
