@@ -406,6 +406,24 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+/* See the picture first (PHASE-5 A2): Fit / Fill, Turn and Reset under the picture, on the first screen. */
+.st-adjust {
+  display: flex;
+  gap: 8px;
+  margin: 0 16px;
+  flex-wrap: wrap;
+}
+.st-adjust .st-chip {
+  background: rgba(11, 18, 32, 0.72);
+}
+.st-adjust .st-chip:disabled {
+  opacity: 0.45;
+}
+/* The details as one line (PHASE-5 A4). */
+.st-summary strong {
+  font-size: 14px;
+  line-height: 18px;
+}
 .st-chip {
   height: 34px;
   padding: 0 15px;
