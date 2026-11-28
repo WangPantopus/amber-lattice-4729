@@ -112,7 +112,7 @@ enum ConvergenceEndpoints {
     static func piece(_ id: String) -> Endpoint {
         Endpoint(
             method: .get,
-            path: "/api/reinvented/convergences/\(id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? id)",
+            path: "/api/reinvented/convergences/\(id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id)",
             cachePolicy: .reloadIgnoringLocalCacheData
         )
     }
