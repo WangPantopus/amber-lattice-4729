@@ -8,6 +8,8 @@ import app.pantopus.android.data.api.models.reinvented.ReinventedKeepBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedListResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMapResponse
 import app.pantopus.android.data.api.models.reinvented.ReinventedMomentPlanResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedStrandsResponse
+import app.pantopus.android.data.api.models.reinvented.ReinventedStrandsSeenBody
 import app.pantopus.android.data.api.models.reinvented.ReinventedStripResponse
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -117,6 +119,18 @@ interface ReinventedApi {
         @Query("guests") guests: String = "1",
         @Query("extras") extras: String = "1",
     ): ReinventedMomentPlanResponse
+
+    /** `GET /api/reinvented/strands` (CONTRACT 8c): "Went because of you", told to the reader only. */
+    @GET("api/reinvented/strands")
+    suspend fun strands(
+        @Query("cursor") cursor: String?,
+    ): ReinventedStrandsResponse
+
+    /** `POST /api/reinvented/strands/seen` (CONTRACT 8c): the groups' items the reader has now seen. */
+    @POST("api/reinvented/strands/seen")
+    suspend fun strandsSeen(
+        @Body body: ReinventedStrandsSeenBody,
+    )
 
     companion object {
         /** Moments on a page of My Atlas. */
