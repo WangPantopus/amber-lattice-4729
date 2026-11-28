@@ -112,13 +112,19 @@ function addressKey(address) {
 const esc = (value) => String(value ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-function codeEmail({ code, senderName, card }) {
+function codeEmail({ code, senderName, card, returnLink = null }) {
   const thing = card ? 'Christmas card' : 'letter';
   const opening = card ? 'open' : 'read';
   const subject = `${code} is your Pantopus code`;
   const intro = `Enter this code on the page your ${thing}’s link opened to ${opening} the ${thing} ${senderName} sent you.`;
-  const footnote = `It works for ${CODE_MINUTES} minutes. If you didn’t ask for it, you can ignore this email: nobody can ${opening} the ${thing} without it.`;
+  const footnote = `It works for ${CODE_MINUTES} minutes. If you didn’t ask for it, you can ignore this email: nobody can sign in or claim the ${thing} without it.`;
   const supportEmail = process.env.SUPPORT_EMAIL || 'support@pantopus.com';
+  // A return button for mobile in-app browsers that lose their previous tab when switching to email; opening the link
+  // pre-fills the code on the page and never auto-submits on GET, so link scanners cannot consume the code.
+  const buttonHtml = returnLink
+    ? `<p style="margin:0 0 22px;"><a href="${esc(returnLink)}" style="display:inline-block; background:${card ? '#8b1d1d' : '#111827'}; color:#ffffff; font-size:15px; font-weight:600; padding:12px 24px; border-radius:10px; text-decoration:none;">Return to your ${esc(thing)}</a></p>`
+    : '';
+  const buttonText = returnLink ? `\nOr return to your ${thing}: ${returnLink}\n` : '';
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -145,7 +151,8 @@ function codeEmail({ code, senderName, card }) {
             <td style="padding:8px 32px 24px;">
               <h1 style="font-size:22px; font-weight:600; margin:0 0 16px; color:#111827;">Your code</h1>
               <p style="font-size:15px; line-height:1.6; color:#374151; margin:0 0 20px;">${esc(intro)}</p>
-              <p style="font-size:34px; line-height:1.2; font-weight:700; letter-spacing:8px; color:#111827; margin:0 0 24px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;">${esc(code)}</p>
+              <p style="font-size:34px; line-height:1.2; font-weight:700; letter-spacing:8px; color:#111827; margin:0 0 20px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;">${esc(code)}</p>
+              ${buttonHtml}
               <div style="border-top:1px solid #e5e7eb; padding-top:20px;">
                 <p style="font-size:13px; line-height:1.6; color:#6b7280; margin:0;">${esc(footnote)} Never share this code.</p>
               </div>
@@ -169,7 +176,7 @@ function codeEmail({ code, senderName, card }) {
   const text = `Your code: ${code}
 
 ${intro}
-
+${buttonText}
 ${footnote} Never share this code.
 
 Questions? Reply to this email or write to ${supportEmail}.
@@ -184,7 +191,7 @@ Pantopus — Your household, organized.
  * with the code); entering the code confirms it. Each code replaces the address's earlier one. Answers 'sent',
  * 'unavailable' (email can't be delivered now) or 'failed'. Never says whether the address had an account.
  */
-async function sendCode({ address, senderName, card, mailId, req }) {
+async function sendCode({ address, senderName, card, mailId, req, returnLinkBase = null }) {
   if (!(await emailService.checkDeliveryAvailability()).available) return 'unavailable';
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({ type: 'magiclink', email: address });
   const code = data?.properties?.email_otp;
@@ -200,7 +207,8 @@ async function sendCode({ address, senderName, card, mailId, req }) {
   // The count of tries starts here; without this row the code can't be used, so it isn't sent.
   const sent = await authSessionService.recordSecurityEvent({ userId: data.user.id, type: SENT_EVENT, req, meta: { mail_id: mailId, to: addressKey(address) } });
   if (!sent) return 'failed';
-  const result = await emailService.sendEmail({ to: address, ...codeEmail({ code, senderName, card }) });
+  const returnLink = returnLinkBase ? `${returnLinkBase}&code=${encodeURIComponent(code)}` : null;
+  const result = await emailService.sendEmail({ to: address, ...codeEmail({ code, senderName, card, returnLink }) });
   if (!result?.success) {
     logger.error('Mail code: email send failed', { error: result?.error || null });
     return 'failed';

@@ -166,10 +166,15 @@ export default function LookItOver({
     </div>
   ) : null;
 
+  const guestOpen = Boolean(preview.link_page?.guest_open);
   const intro = byLink
-    ? `The first person to open your link keeps the card. The page it opens shows ${sealed ? 'the sealed envelope' : 'its picture'}, never your note; they open it in Pantopus once they join.`
+    ? guestOpen
+      ? `Anyone with your link can open and read the card${sealed ? ' once Christmas morning arrives' : ' right away'} — no account needed. The first person to save it keeps it.`
+      : `The first person to open your link keeps the card. The page it opens shows ${sealed ? 'the sealed envelope' : 'its picture'}, never your note; they open it in Pantopus once they join.`
     : byEmail
-    ? 'They aren’t on Pantopus yet. The email never shows your note; they read it in Pantopus once they join with this address.'
+    ? guestOpen
+      ? `They aren’t on Pantopus yet. The email never shows your note; ${sealed ? 'they get a reminder on Christmas morning when it opens.' : 'they can open and read the card right away without an account, and join free to keep it or write back.'}`
+      : 'They aren’t on Pantopus yet. The email never shows your note; they read it in Pantopus once they join with this address.'
     : sealed
       ? 'It comes sealed and stays shut until Christmas morning. Use Back to change anything.'
       : card.arrival === 'christmas_morning'
@@ -185,7 +190,8 @@ export default function LookItOver({
     outcomeDescription: null,
     sentTo: preview.link_page.sent_to,
     createdAt: preview.link_page.sent_on,
-    card: { holiday: card.holiday, year: card.year, sealed: preview.link_page.sealed, front: preview.link_page.front ?? null, by_link: preview.link_page.by_link },
+    card: { holiday: card.holiday, year: card.year, sealed: preview.link_page.sealed, front: preview.link_page.front ?? null,
+      by_link: preview.link_page.by_link, guest_open: preview.link_page.guest_open },
   } : null;
 
   return (
