@@ -21,7 +21,6 @@ import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.auth.AuthRepository
-import app.pantopus.android.data.living.LivingCompass
 import app.pantopus.android.data.location.HeightReading
 import app.pantopus.android.data.moments.MomentBeforeAfterPicture
 import app.pantopus.android.data.moments.MomentHeight
@@ -41,6 +40,7 @@ import app.pantopus.android.ui.screens.compose.placepicker.PostPlaceTag
 import app.pantopus.android.ui.screens.compose.pulse.MediaLocationAccess
 import app.pantopus.android.ui.screens.compose.pulse.PickedPlace
 import app.pantopus.android.ui.screens.compose.pulse.readPickedPlace
+import app.pantopus.android.ui.screens.feed.living.livingHeading
 import app.pantopus.android.ui.screens.feed.reinvented.after.sentExplore
 import app.pantopus.android.ui.screens.moments.MomentsRoutes
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
@@ -1282,10 +1282,7 @@ class MomentsComposeViewModel
                         mentions = current.sentMentions,
                         play = current.sentPlay,
                         // Live beams (CONTRACT 9h): the compass nearest this Moment's own shot, with the Live mark and switch on only.
-                        heading =
-                            current.shot
-                                ?.let { LivingCompass.near(it.at) }
-                                ?.takeIf { pulse.on.value && current.liveFor(usable, now) },
+                        heading = current.livingHeading(pulse.on.value, usable, now),
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)

@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber")
+
 package app.pantopus.android.data.living
 
 import android.content.Context

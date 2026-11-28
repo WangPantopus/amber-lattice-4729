@@ -1,3 +1,5 @@
+@file:Suppress("MatchingDeclarationName")
+
 package app.pantopus.android.ui.screens.feed.living
 
 import androidx.compose.runtime.Composable
@@ -8,10 +10,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.living.LivingCompass
+import app.pantopus.android.data.living.MomentHeadingBody
 import app.pantopus.android.data.location.LocationProvider
 import app.pantopus.android.data.pulse.PulseReinventedFeature
+import app.pantopus.android.ui.screens.moments.compose.ComposePin
+import app.pantopus.android.ui.screens.moments.compose.MomentsComposeUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
+import java.time.Instant
 import javax.inject.Inject
 
 /** The switch and the phone's place, for the compass at the shutter (CONTRACT 9h). */
@@ -40,4 +46,18 @@ fun LivingCompassWatch(viewModel: LivingCompassViewModel = hiltViewModel()) {
         LivingCompass.watch(context.applicationContext, on, place?.first, place?.second)
         onDispose { LivingCompass.stop() }
     }
+}
+
+/**
+ * The heading a Moment's post carries (CONTRACT 9h): the compass reading nearest this Moment's own shot, only with the
+ * Live mark for the pin being sent and only while the switch is on ([on]); else null, left out of the post.
+ */
+internal fun MomentsComposeUiState.livingHeading(
+    on: Boolean,
+    usable: ComposePin,
+    now: Instant,
+): MomentHeadingBody? {
+    val at = shot?.at ?: return null
+    if (!on || !liveFor(usable, now)) return null
+    return LivingCompass.near(at)
 }
