@@ -172,8 +172,9 @@ struct ReinventedAtlasSearch: View {
             } else if let q = model.q {
                 results(q)
             } else {
-                // Curiosity constellations near you (CONTRACT 9c) while nothing is searched.
+                // Curiosity constellations near you (CONTRACT 9c) and the cabinet (9d) while nothing is searched.
                 ReinventedConstellations()
+                ReinventedCabinet()
             }
         }
         .sheet(isPresented: $guide) {
