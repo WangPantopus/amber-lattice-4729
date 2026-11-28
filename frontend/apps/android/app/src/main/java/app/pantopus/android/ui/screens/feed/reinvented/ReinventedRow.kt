@@ -2,6 +2,7 @@ package app.pantopus.android.ui.screens.feed.reinvented
 
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentRingDto
+import app.pantopus.android.data.api.models.reinvented.PulseTravelDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedBandDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedListItemDto
 import app.pantopus.android.data.api.models.reinvented.shownRetake
@@ -30,8 +31,10 @@ sealed interface ReinventedRow {
         override val key: String get() = "moment-${moment.id}"
     }
 
+    /** A post that stays, with its phase 3 keys (who carried it, an Eyes-on window; CONTRACT 8f). */
     data class Post(
         val card: PulsePostCardContent,
+        val travel: PulseTravelDto? = null,
     ) : ReinventedRow {
         override val key: String get() = "post-${card.id}"
     }
@@ -82,7 +85,7 @@ private fun ReinventedListItemDto.row(byId: Map<String, PulsePostCardContent>): 
     val post = post
     return when {
         type == ReinventedPulseViewModel.MOMENT && moment != null -> ReinventedRow.Moment(moment, kept)
-        post != null -> byId[post.id]?.let { ReinventedRow.Post(it) }
+        post != null -> byId[post.id]?.let { ReinventedRow.Post(it, travel) }
         else -> null
     }
 }
@@ -164,6 +167,8 @@ data class ReinventedListActions(
     val onKeepExploring: () -> Unit = {},
     /** A row's place: the map glides there. */
     val onShowOnMap: (ReinventedPoint) -> Unit = {},
+    /** The signed-in person ("Pass it on" is offered only under others' posts). */
+    val viewer: String? = null,
 )
 
 /** What a tile of the strip opens. */

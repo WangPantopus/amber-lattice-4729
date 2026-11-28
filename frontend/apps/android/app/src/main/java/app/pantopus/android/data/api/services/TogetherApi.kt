@@ -1,6 +1,8 @@
 package app.pantopus.android.data.api.services
 
 import app.pantopus.android.data.api.models.moments.MomentEnvelope
+import app.pantopus.android.data.api.models.reinvented.EyesOnNearBody
+import app.pantopus.android.data.api.models.reinvented.EyesOnNearResponse
 import app.pantopus.android.data.api.models.reinvented.MomentPinEnvelope
 import app.pantopus.android.data.api.models.reinvented.MomentPinReactionBody
 import app.pantopus.android.data.api.models.reinvented.MomentPinsResponse
@@ -72,6 +74,12 @@ interface TogetherApi {
     suspend fun retake(
         @Path("id") id: String,
     ): RetakeEnvelope
+
+    /** CONTRACT 8f: open Eyes-on Asks near the reader, whose place goes in the body only (never kept or logged). */
+    @POST("api/reinvented/eyes-on/near")
+    suspend fun eyesOnNear(
+        @Body body: EyesOnNearBody,
+    ): EyesOnNearResponse
 
     /**
      * `POST /api/moments` (`backend/routes/moments.js`, create) with phase 3's keys beside today's body (CONTRACT 8):
