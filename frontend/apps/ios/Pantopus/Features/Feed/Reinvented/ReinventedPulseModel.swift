@@ -74,6 +74,8 @@ final class ReinventedPulseModel {
     private(set) var reach = "around"
     private(set) var miles = 25
     private(set) var chip = "all"
+    /// One of the person's circles inside Close circle (CONTRACT 8d); nil is all their connections.
+    private(set) var circle: ReinventedCirclePick?
     let cards: ProfilePostCardsModel
 
     @ObservationIgnored private var items: [ReinventedListItemDTO] = []
@@ -149,11 +151,15 @@ final class ReinventedPulseModel {
         await refresh()
     }
 
-    func pick(reach: String, miles: Int) async {
-        guard reach != self.reach || miles != self.miles else { return }
+    func pick(reach: String, miles: Int, circle: ReinventedCirclePick? = nil) async {
+        guard reach != self.reach || miles != self.miles || circle != self.circle else { return }
         self.reach = reach
         self.miles = miles
+        self.circle = reach == "close" ? circle : nil
         chip = "all"
+        // What the pill now names, never the last reach's rows under it: loading until it comes, or why it didn't.
+        items = []
+        cursor = nil
         await refresh()
     }
 
@@ -168,7 +174,8 @@ final class ReinventedPulseModel {
             miles: reach == "around" ? miles : nil,
             chip: chip,
             at: here.map { ($0.latitude, $0.longitude) },
-            cursor: cursor
+            cursor: cursor,
+            circle: reach == "close" ? circle?.id : nil
         )
         guard let data = await fetch(endpoint) else { return }
         guard let page = try? JSONDecoder().decode(ReinventedListResponse.self, from: data) else {
@@ -193,6 +200,10 @@ final class ReinventedPulseModel {
         case 200..<300:
             ReinventedServer.shared.clear()
             return response.data
+        case 404 where circle != nil && Self.code(response.data) == "CIRCLE_NOT_FOUND":
+            // A circle the person is no longer in: back to all their connections, not to today's Pulse.
+            circle = nil
+            Task { await refresh() }
         case 404:
             ReinventedServer.shared.markBehind()
         case 403:
@@ -201,6 +212,10 @@ final class ReinventedPulseModel {
             if items.isEmpty { load = .failed("Couldn't load Pulse. Try again.") }
         }
         return nil
+    }
+
+    private static func code(_ data: Data) -> String? {
+        ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["code"] as? String
     }
 
     /// Explore (CONTRACT 6f): the picked ten on the first page, then newest with variety, pausing at "Keep exploring?".
