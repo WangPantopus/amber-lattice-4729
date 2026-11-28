@@ -39,6 +39,13 @@ struct MomentsComposerChoice: View {
                 MomentsComposer(model: request.model, onClose: onClose)
             }
         }
+        // Shared from another app: it becomes the draft once where you are and the 18+ question are settled, as
+        // nothing can be taken, picked or written before both.
+        .onChange(of: request.model.gate == .open, initial: true) { _, open in
+            guard open, let shared = request.shared, !shared.taken else { return }
+            shared.taken = true
+            Task { await request.model.use(shared: shared.file, isVideo: shared.isVideo) }
+        }
         // Today's composer knows nothing of a made-up name: going back, the Moment is the person's own again.
         .onChange(of: reinvented.isOn) { _, isOn in
             if !isOn {

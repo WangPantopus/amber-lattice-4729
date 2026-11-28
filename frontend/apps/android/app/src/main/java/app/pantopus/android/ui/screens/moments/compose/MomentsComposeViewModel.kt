@@ -6,6 +6,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.MediaStore
+import androidx.core.content.FileProvider
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -33,6 +34,7 @@ import app.pantopus.android.data.moments.serverCode
 import app.pantopus.android.data.plans.PlanGpsFix
 import app.pantopus.android.data.plans.PlanLocationResolver
 import app.pantopus.android.data.pulse.PulseReinventedFeature
+import app.pantopus.android.sharein.shareInFile
 import app.pantopus.android.ui.screens.compose.placepicker.PostPlaceTag
 import app.pantopus.android.ui.screens.compose.pulse.MediaLocationAccess
 import app.pantopus.android.ui.screens.compose.pulse.PickedPlace
@@ -62,6 +64,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -152,6 +155,8 @@ enum class ComposeGate { Locating, NeedsLocation, NeedsAdult, NotEligible, Open 
 
 data class MomentsComposeUiState(
     val gate: ComposeGate = ComposeGate.Locating,
+    /** A photo or video shared from another app is on its way to the Post screen: the camera isn't asked for meanwhile. */
+    val sharedWaiting: Boolean = false,
     val step: ComposeStep = ComposeStep.Camera,
     /** The fix the camera's chip and a text card pin at. */
     val here: ComposePin? = null,
@@ -365,6 +370,25 @@ class MomentsComposeViewModel
                 ),
             )
         val state: StateFlow<MomentsComposeUiState> = _state.asStateFlow()
+
+        init {
+            // Shared from another app: taken once nothing stands before taking, picking or writing (where you are,
+            // then 18+), exactly as if picked from the library. Each of several is its own Moment.
+            val shared =
+                savedState.get<String>(MomentsRoutes.SHARED_KEY).orEmpty().split(',').mapNotNull { name ->
+                    shareInFile(context, name)?.let { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", it) }
+                }
+            if (shared.isNotEmpty()) {
+                _state.update { it.copy(sharedWaiting = true) }
+                viewModelScope.launch {
+                    _state.first { it.gate == ComposeGate.Open }
+                    picked(shared)
+                    // On the Post screen, or it couldn't be opened and a notice says so: the camera is the camera again.
+                    _state.first { it.step == ComposeStep.Review || it.notice != null }
+                    _state.update { it.copy(sharedWaiting = false) }
+                }
+            }
+        }
 
         /** Your photo, for the pin on the Post sheet. */
         val avatarUrl: String? get() = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.avatarUrl

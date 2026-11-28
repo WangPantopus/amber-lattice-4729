@@ -154,7 +154,7 @@ public struct InboxTabRoot: View {
     /// its details keep Report and Block. A room the list shows under its own
     /// name (a Support Train's, a group's) opens under that name. Anything
     /// else, or a failed read, opens the room exactly as before.
-    private static func linkedConversation(roomId: String, viewerId: String) async -> InboxConversationDestination {
+    static func linkedConversation(roomId: String, viewerId: String) async -> InboxConversationDestination {
         let room = InboxConversationDestination(
             mode: .room(id: roomId),
             kind: .dm,

@@ -758,6 +758,14 @@ struct HolidayCardWriteStep: View {
                 gift: CardTableMood(mood: design.mood, number: design.number) == .reverence,
                 needsStamp: cards.mediaStamp == .buy
             ) { viewModel.openStampsForMedia() }
+                // A photo shared to Mail from another app's share sheet goes on the card here, as if picked
+                // (`ShareInCardPhoto`). Where this card can't take one it waits, and the row says why.
+                .onAppear {
+                    if onePerson, cards.takesPhoto, cards.mediaStamp != .buy, attachments.photo == nil,
+                       let shared = ShareInCardPhoto.shared.take() {
+                        attachments.add(shared)
+                    }
+                }
         }
         if cards.signature != nil {
             signRow

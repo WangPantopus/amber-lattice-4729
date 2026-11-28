@@ -77,6 +77,8 @@ struct HolidayCardFlowView: View {
     var body: some View {
         VStack(spacing: Spacing.s0) {
             header
+            // A photo shared to Mail from another app waits for "Write on the back".
+            ShareInCardPhotoNote()
             ScrollViewReader { scroller in
                 ScrollView {
                     VStack(alignment: .leading, spacing: Spacing.s3) {

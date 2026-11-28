@@ -160,6 +160,10 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLSchemes:
               - pantopus
+        # A person or group from Pantopus chats, suggested in the share sheet's
+        # top row (ShareSuggestions.swift donates them; PantopusShare takes the tap).
+        NSUserActivityTypes:
+          - INSendMessageIntent
     entitlements:
       path: Pantopus/Resources/Pantopus.entitlements
       properties:
@@ -249,6 +253,8 @@ targets:
       - target: PantopusWidgets
       # Runs before a push is shown, also embedded into PlugIns.
       - target: PantopusNotificationService
+      # Pantopus in other apps' share sheets, also embedded into PlugIns.
+      - target: PantopusShare
     scheme:
       testTargets:
         - PantopusTests
@@ -360,6 +366,65 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pantopus.app.notifications
         PRODUCT_NAME: PantopusNotificationService
+        TARGETED_DEVICE_FAMILY: "1,2" # matches the app
+        SKIP_INSTALL: YES
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+        Staging:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: STAGING
+          SWIFT_COMPILATION_MODE: wholemodule
+        Release:
+          SWIFT_COMPILATION_MODE: wholemodule
+
+  # Pantopus in other apps' share sheets (founder, 2026-11-27): a photo, video,
+  # link or words shared from Photos, Safari or any app. It copies what was
+  # shared into the App Group and opens the app on the composer the person
+  # picked (ShareViewController.swift). Needs its own App ID and App Store
+  # profile, like the widget (APP_STORE_TARGETS in the Fastfile).
+  PantopusShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: PantopusShare
+        excludes:
+          # Bundled explicitly below, like the app's manifest.
+          - "PrivacyInfo.xcprivacy"
+      - path: PantopusShare/PrivacyInfo.xcprivacy
+        buildPhase: resources
+      # Shared contract: the extension writes the share, the app reads it.
+      - path: Pantopus/Core/ShareIn/ShareInbox.swift
+    entitlements:
+      path: PantopusShare/PantopusShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.app.pantopus.ios
+    info:
+      path: PantopusShare/Info.plist
+      properties:
+        # The name under the icon in the share sheet's row of apps.
+        CFBundleDisplayName: Pantopus
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            # People and groups from Pantopus chats in the share sheet's top
+            # row: the app donates each chat a message is sent in
+            # (ShareSuggestions.swift), and a tap on one arrives as this intent.
+            IntentsSupported:
+              - INSendMessageIntent
+            # What Pantopus takes: up to ten photos or videos, a link, words.
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+              NSExtensionActivationSupportsMovieWithMaxCount: 10
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pantopus.app.share
+        PRODUCT_NAME: PantopusShare
         TARGETED_DEVICE_FAMILY: "1,2" # matches the app
         SKIP_INSTALL: YES
       configs:

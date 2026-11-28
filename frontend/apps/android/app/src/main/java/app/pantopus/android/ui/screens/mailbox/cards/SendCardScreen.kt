@@ -61,6 +61,7 @@ import app.pantopus.android.data.api.models.mailbox.HolidayCardDesign
 import app.pantopus.android.data.api.models.mailbox.HolidayCardsResponse
 import app.pantopus.android.data.api.models.mailbox.SentHolidayCard
 import app.pantopus.android.data.api.models.mailbox.StampBalance
+import app.pantopus.android.sharein.ShareInCardPhotoNote
 import app.pantopus.android.ui.components.Shimmer
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardLinkBox
 import app.pantopus.android.ui.screens.mailbox.cards.table.clothTint
@@ -180,6 +181,8 @@ fun SendCardScreen(
                 modifier = Modifier.padding(horizontal = Spacing.s4, vertical = Spacing.s1),
             )
         }
+        // A photo shared to Mail from another app waits for "Write on the back".
+        ShareInCardPhotoNote()
         Box(modifier = Modifier.weight(1f)) {
             if (shelves && season != null) {
                 PickShelves(

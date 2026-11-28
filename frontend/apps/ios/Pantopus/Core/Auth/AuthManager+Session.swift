@@ -87,7 +87,12 @@ extension AuthManager {
     func publishPushAccount(_ state: State) {
         switch state {
         case let .signedIn(user): PushAccountMarker.write(userId: user.id)
-        case .signedOut: PushAccountMarker.write(userId: nil)
+        case .signedOut:
+            PushAccountMarker.write(userId: nil)
+            // Nor does the share extension offer anyone's name, or keep what was shared.
+            ShareInbox.write(account: nil)
+            ShareInbox.clear()
+            ShareSuggestions.forget()
         case .unknown, .resumable: break
         }
     }
