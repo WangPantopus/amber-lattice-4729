@@ -204,5 +204,6 @@ internal fun StudioMentionRow(
  * today's Post screen lets them go when it takes the Moment back (the view model's `leaveStudio`).
  */
 internal val MomentsComposeUiState.holdsStudioChoices: Boolean
-    get() = stamps.isNotEmpty() || madeUp || guess || mentions.isNotEmpty() || pair != null || dots.isNotEmpty() ||
-        items.isNotEmpty()
+    get() =
+        stamps.isNotEmpty() || madeUp || guess || mentions.isNotEmpty() || pair != null || dots.isNotEmpty() ||
+            items.isNotEmpty()

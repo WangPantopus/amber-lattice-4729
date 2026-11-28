@@ -16,8 +16,8 @@ import app.pantopus.android.data.api.models.moments.MomentDotDto
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentLocationBody
 import app.pantopus.android.data.api.models.moments.MomentPlaceChoiceDto
-import app.pantopus.android.data.api.models.moments.MomentPlayItemDto
 import app.pantopus.android.data.api.models.moments.MomentPlacePreviewDto
+import app.pantopus.android.data.api.models.moments.MomentPlayItemDto
 import app.pantopus.android.data.api.models.moments.MomentSeriesDto
 import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.api.net.NetworkError
@@ -1177,7 +1177,15 @@ class MomentsComposeViewModel
                 if (!it.holdsStudioChoices) {
                     it
                 } else {
-                    it.copy(stamps = emptyList(), madeUp = false, guess = false, mentions = emptyList(), pair = null, dots = emptyList(), items = emptyList())
+                    it.copy(
+                        stamps = emptyList(),
+                        madeUp = false,
+                        guess = false,
+                        mentions = emptyList(),
+                        pair = null,
+                        dots = emptyList(),
+                        items = emptyList(),
+                    )
                 }
             }
 

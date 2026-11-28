@@ -31,6 +31,7 @@ import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentMovingWords
 import app.pantopus.android.data.api.models.moments.MomentPlayItemDto
 import app.pantopus.android.data.api.models.moments.MomentPlayKinds
+import app.pantopus.android.data.api.models.moments.beforeAfter
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentFont
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -118,10 +119,11 @@ fun MomentMovingWordsText(
                     rotationZ = item.rotation.toFloat()
                     val t = clock.floatValue
                     when (motion) {
-                        "pulse" -> (1f + 0.06f * sin(t * 2.4f)).let {
-                            scaleX = it
-                            scaleY = it
-                        }
+                        "pulse" ->
+                            (1f + 0.06f * sin(t * 2.4f)).let {
+                                scaleX = it
+                                scaleY = it
+                            }
                         "drift" -> translationY = 6f * lift * sin(t * 1.3f)
                         else -> Unit
                     }

@@ -267,7 +267,13 @@ private fun MovingWordsForm(
     var motion by rememberSaveable(item?.id) { mutableStateOf(item?.motion ?: MomentMovingWords.MOTIONS.first().first) }
     var color by rememberSaveable(item?.id) { mutableStateOf(item?.color ?: MomentMovingWords.WHITE) }
     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-        Text("Moving words", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
+        Text(
+            "Moving words",
+            color = Color.White,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.semantics { heading() },
+        )
         Text("One line, up to ${MomentMovingWords.LONGEST}", color = PantopusColors.studioPillSecondary, fontSize = 13.sp)
     }
     WordsField(words) { words = MomentMovingWords.cut(it) }
@@ -294,7 +300,11 @@ private fun MovingWordsForm(
                         .size(34.dp)
                         .clip(CircleShape)
                         .background(movingWordsColor(hex))
-                        .border(if (color == hex) 3.dp else 1.dp, if (color == hex) Color.White else PantopusColors.studioPillOutline, CircleShape)
+                        .border(
+                            if (color == hex) 3.dp else 1.dp,
+                            if (color == hex) Color.White else PantopusColors.studioPillOutline,
+                            CircleShape,
+                        )
                         .clickable(role = Role.Button) { color = hex }
                         .semantics {
                             contentDescription = listOf("White", "Yellow", "Black", "Sky")[at]
