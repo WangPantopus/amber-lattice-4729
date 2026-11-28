@@ -76,6 +76,7 @@ import app.pantopus.android.data.api.models.moments.MomentDotDto
 import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.moments.MomentMediaFile
 import app.pantopus.android.ui.screens.feed.reinvented.after.StudioPostKindRow
+import app.pantopus.android.ui.screens.feed.reinvented.after.TogetherStudioGhost
 import app.pantopus.android.ui.screens.feed.reinvented.after.studioPostPill
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
@@ -190,6 +191,7 @@ internal fun MomentsStudioStep(
     ) {
         val pair = state.studioPair
         if (pair != null) StudioBeforeAfterPicture(pair) else StudioPicture(state)
+        TogetherStudioGhost(state)
         if (pair == null) StudioCutoutPress(state, onLift = onLiftCutout)
         // The stamps sit on the picture, under the X, the tools, the caption and the bar.
         StudioStampLayer(state = state, onStamps = onStamps)

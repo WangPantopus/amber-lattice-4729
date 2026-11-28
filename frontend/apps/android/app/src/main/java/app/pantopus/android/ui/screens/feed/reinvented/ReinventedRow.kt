@@ -3,6 +3,8 @@ package app.pantopus.android.ui.screens.feed.reinvented
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedBandDto
+import app.pantopus.android.data.api.models.reinvented.ReinventedListItemDto
+import app.pantopus.android.data.api.models.reinvented.shownRetake
 import app.pantopus.android.data.pulse.ReinventedBox
 import app.pantopus.android.data.pulse.ReinventedPoint
 import app.pantopus.android.ui.screens.feed.pulse.PulseIntent
@@ -56,7 +58,9 @@ internal fun ReinventedPulseState.rows(cards: List<PulsePostCardContent>): List<
     val rows = mutableListOf<ReinventedRow>()
     var lastBand: String? = null
     val explore = reach == ReinventedPulseViewModel.EXPLORE
+    val pieces = mutableSetOf<String>()
     for ((index, item) in items.withIndex()) {
+        if (item.repeatsPiece(pieces)) continue
         if (explore && pickedCount > 0 && index == 0) rows += ReinventedRow.Heading("Today, elsewhere")
         if (explore && pickedCount > 0 && index == pickedCount) rows += ReinventedRow.Heading("New elsewhere")
         val before = rows.size
@@ -65,16 +69,28 @@ internal fun ReinventedPulseState.rows(cards: List<PulsePostCardContent>): List<
             rows += ReinventedRow.Band(line)
             lastBand = line.band
         }
-        val moment = item.moment
-        val post = item.post
-        when {
-            item.type == ReinventedPulseViewModel.MOMENT && moment != null -> rows += ReinventedRow.Moment(moment, item.kept)
-            post != null -> byId[post.id]?.let { rows += ReinventedRow.Post(it) }
-        }
+        item.row(byId)?.let { rows += it }
         val why = item.why
         if (explore && why != null && rows.size > before) rows += ReinventedRow.Why(item.type + item.id, why)
     }
     return rows
+}
+
+/** What an item draws as: a Moment (kept or fading), or a post once its card is made. */
+private fun ReinventedListItemDto.row(byId: Map<String, PulsePostCardContent>): ReinventedRow? {
+    val moment = moment
+    val post = post
+    return when {
+        type == ReinventedPulseViewModel.MOMENT && moment != null -> ReinventedRow.Moment(moment, kept)
+        post != null -> byId[post.id]?.let { ReinventedRow.Post(it) }
+        else -> null
+    }
+}
+
+/** A Retake is one row (CONTRACT 8e): the first of its frames in the list stands for it and opens the whole Retake. */
+private fun ReinventedListItemDto.repeatsPiece(seen: MutableSet<String>): Boolean {
+    val key = moment?.shownRetake?.let { "retake-${it.startId}" } ?: return false
+    return !seen.add(key)
 }
 
 /** The status line over a post that stays, from the kinds today's Pulse has; null for the rest. */

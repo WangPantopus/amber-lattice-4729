@@ -9,6 +9,7 @@ import app.pantopus.android.data.api.models.reinvented.MomentRepliesShownBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyEnvelope
 import app.pantopus.android.data.api.models.reinvented.MomentReplyReportBody
+import app.pantopus.android.data.api.models.reinvented.RetakeEnvelope
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -65,4 +66,19 @@ interface TogetherApi {
         @Path("id") id: String,
         @Body body: MomentPinReactionBody,
     ): MomentPinEnvelope
+
+    /** CONTRACT 8e: a Retake, by its start's id or any frame's (`404 RETAKE_NOT_FOUND` where the reader may not see it). */
+    @GET("api/reinvented/retakes/{id}")
+    suspend fun retake(
+        @Path("id") id: String,
+    ): RetakeEnvelope
+
+    /**
+     * `POST /api/moments` (`backend/routes/moments.js`, create) with phase 3's keys beside today's body (CONTRACT 8):
+     * only from the Studio, only while the switch is on and the Studio chose one ([TogetherCreate]).
+     */
+    @POST("api/moments")
+    suspend fun createMoment(
+        @Body body: Map<String, @JvmSuppressWildcards Any?>,
+    ): MomentEnvelope
 }
