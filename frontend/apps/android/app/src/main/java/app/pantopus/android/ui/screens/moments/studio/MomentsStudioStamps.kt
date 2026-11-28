@@ -536,6 +536,7 @@ internal fun StudioStampTray(
     onLook: (MomentLook) -> Unit = {},
     lookPicture: StateFlow<Bitmap?>? = null,
     onPhotostrip: () -> Unit = {},
+    onPlaceCutout: (File) -> Unit = {},
     stamps: MomentsStudioStampsViewModel = hiltViewModel(),
 ) {
     val ui by stamps.state.collectAsStateWithLifecycle()
@@ -560,6 +561,7 @@ internal fun StudioStampTray(
                     if (state.offersGuess) StudioGuessRow(on = state.guess, onToggle = { onGuess(!state.guess) })
                     if (looks) StudioLooksRow(picture = asItCame, picked = state.marks.look, onPick = onLook)
                     if (strip > 0) StudioPhotostripRow(more = strip, onMake = onPhotostrip)
+                    if (looks) StudioYourCutoutsRow(onPlace = onPlaceCutout)
                 }
             } else {
                 null

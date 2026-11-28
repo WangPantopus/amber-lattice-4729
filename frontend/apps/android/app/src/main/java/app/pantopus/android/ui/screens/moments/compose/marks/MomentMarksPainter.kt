@@ -78,6 +78,8 @@ object MomentMarksPainter {
                 canvas.drawPath(CardSignatureInk.path(listOf(pixels)), ink)
             }
         }
+        // "Pulse, reinvented"'s Studio: cutouts over the lines, under the words in front.
+        marks.cutouts.drawAll(canvas, width, height)
         val box = Paint(Paint.ANTI_ALIAS_FLAG)
         // Labels behind the subject were drawn first.
         for (label in marks.labels.filterNot { subject != null && it.behind }) {

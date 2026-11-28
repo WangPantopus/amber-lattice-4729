@@ -45,6 +45,9 @@ import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.line
 import app.pantopus.android.ui.screens.moments.components.takenLabel
 import app.pantopus.android.ui.screens.moments.components.takenLongAgo
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentCutout
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentCutoutLift
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentCutoutStore
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentLook
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarks
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksEditing
@@ -68,6 +71,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -1002,6 +1006,55 @@ class MomentsComposeViewModel
             }
         }
 
+        /**
+         * "Pulse, reinvented"'s Studio: a long press on the photo at ([x], [y]), shares of the picture as shown, lifts the
+         * thing there on the phone as a cutout where it was, and keeps it in "Your cutouts". Drawn in like every mark.
+         */
+        fun liftCutout(
+            x: Float,
+            y: Float,
+        ) {
+            val media = _state.value.media as? MomentMediaFile.Photo ?: return
+            if (_state.value.posting || _state.value.marking != null) return
+            viewModelScope.launch {
+                marksKeeper.read(media) {}
+                val picture = withTimeoutOrNull(CUTOUT_READ_MS) { marksKeeper.picture.filterNotNull().first() } ?: return@launch
+                val now = _state.value
+                val id = (now.marks.cutouts.maxOfOrNull { it.id } ?: 0) + 1
+                val cutout = MomentCutoutLift.at(context, picture, now.placement, x, y, id)
+                if (cutout == null) {
+                    _state.update { it.copy(notice = "Nothing to lift there.") }
+                    return@launch
+                }
+                withContext(Dispatchers.IO) { MomentCutoutStore.keep(context, cutout.image) }
+                redrawStudio(now.marks.copy(cutouts = now.marks.cutouts + cutout))
+            }
+        }
+
+        /** "Pulse, reinvented"'s Studio tray: one of "Your cutouts" in the middle of the photo. */
+        fun placeCutout(file: java.io.File) {
+            if (_state.value.media !is MomentMediaFile.Photo || _state.value.posting || _state.value.marking != null) return
+            viewModelScope.launch {
+                val image = withContext(Dispatchers.IO) { MomentCutoutStore.read(file) } ?: return@launch
+                val now = _state.value
+                val id = (now.marks.cutouts.maxOfOrNull { it.id } ?: 0) + 1
+                redrawStudio(now.marks.copy(cutouts = now.marks.cutouts + MomentCutout(id, image, 0.5f, 0.5f, CUTOUT_PLACED_WIDTH)))
+            }
+        }
+
+        /** The Studio's marks changed outside the editor: drawn into the photo as the editor's Done draws them. */
+        private fun redrawStudio(marks: MomentMarks) {
+            val media = _state.value.media as? MomentMediaFile.Photo ?: return
+            _state.update { it.copy(marks = marks) }
+            marksKeeper.draw(
+                marks,
+                _state.value.placement,
+                media.file,
+                onDrawn = { file -> _state.update { it.copy(media = MomentMediaFile.Photo(file)) } },
+                onFailed = { drawn, placed -> _state.update { it.copy(marks = drawn, placement = placed, notice = MARKS_FAILED) } },
+            )
+        }
+
         /** "Pulse, reinvented"'s Studio tray: the photo as it came, read for the film looks' small copies ([marksPicture]). */
         fun readLookPicture() {
             val media = _state.value.media as? MomentMediaFile.Photo ?: return
@@ -1413,6 +1466,10 @@ class MomentsComposeViewModel
         private companion object {
             const val MAX_TEXT = 200
             const val MAX_CAPTION = 100
+
+            /** "Pulse, reinvented"'s Studio: how long a cutout waits for the photo to be read, and a placed one's width. */
+            const val CUTOUT_READ_MS = 10_000L
+            const val CUTOUT_PLACED_WIDTH = 0.4f
             const val CHOICES_PREFS = "pantopus.moments.post"
             const val DEFAULT_HOURS = 24
             val ALLOWED_HOURS = setOf(1, 6, 24, 48)

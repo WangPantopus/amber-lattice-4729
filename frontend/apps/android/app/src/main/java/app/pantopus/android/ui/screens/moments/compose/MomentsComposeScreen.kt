@@ -257,6 +257,8 @@ fun MomentsComposeScreen(
                         onGuess = viewModel::setGuess,
                         onLook = viewModel::setLook,
                         onPhotostrip = viewModel::photostrip,
+                        onLiftCutout = viewModel::liftCutout,
+                        onPlaceCutout = viewModel::placeCutout,
                         onTrayOpen = viewModel::readLookPicture,
                         lookPicture = viewModel.marksPicture,
                         onMention = viewModel::addMention,
