@@ -1,7 +1,9 @@
 /* The living map (Pulse, reinvented, phase 4, board B4): heights, shadows, lanterns, clouds, beacons, beams and night. */
 
-/* Night falls on the map when it falls there: the map's pictures darken; the pins keep their colours. */
-.rp-leaflet .leaflet-tile-pane {
+/* Night falls on the map when it falls there: the map's pictures darken (the flat map's tiles, the globe's picture); the
+   pins keep their colours. */
+.rp-leaflet .leaflet-tile-pane,
+.rp-globe .mapboxgl-canvas {
   filter: brightness(calc(1 - 0.55 * var(--rp-night, 0))) saturate(calc(1 - 0.35 * var(--rp-night, 0)));
   transition: filter 1.5s ease;
 }
@@ -79,7 +81,8 @@
     animation: none;
     box-shadow: 0 2px 8px #0003, 0 0 0 3px #f9731633;
   }
-  .rp-leaflet .leaflet-tile-pane {
+  .rp-leaflet .leaflet-tile-pane,
+  .rp-globe .mapboxgl-canvas {
     transition: none;
   }
 }
