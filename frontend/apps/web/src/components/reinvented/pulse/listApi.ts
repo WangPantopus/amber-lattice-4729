@@ -61,10 +61,20 @@ export function readList(
     cursor,
     point,
     circle = null,
-  }: { reach: Reach; miles: number; chip: Chip; cursor: string | null; point: Point | null; circle?: string | null },
+    filters = null,
+  }: {
+    reach: Reach;
+    miles: number;
+    chip: Chip;
+    cursor: string | null;
+    point: Point | null;
+    circle?: string | null;
+    /** PHASE-5 B (CONTRACT 10a): `kinds`, `when`, `from`, `state`, `since`; with any of them the chip isn't sent. */
+    filters?: Record<string, string> | null;
+  },
   signal?: AbortSignal,
 ): Promise<ListPage> {
-  const params: Record<string, string | number> = { reach, chip, limit: 20 };
+  const params: Record<string, string | number> = filters ? { reach, ...filters, limit: 20 } : { reach, chip, limit: 20 };
   // Close circle can be one of the person's circles (CONTRACT 8d): only its people who are in.
   if (reach === 'close' && circle) params.circle = circle;
   if (reach === 'around') params.miles = miles;
@@ -149,8 +159,9 @@ export interface Box {
   east: number;
 }
 
-export function readMap(box: Box, time: MapTime, signal?: AbortSignal): Promise<MapData> {
-  return get<MapData>('/api/reinvented/map', { ...box, time }, { signal });
+/** The map for a box and the time row's choice, with the list's filters (CONTRACT 10a; the map takes no `when`). */
+export function readMap(box: Box, time: MapTime, signal?: AbortSignal, filters: Record<string, string> | null = null): Promise<MapData> {
+  return get<MapData>('/api/reinvented/map', { ...box, time, ...(filters || {}) }, { signal });
 }
 
 /** A plan's time as its ticket says it: "Now", "Tonight 6", "Today 10", "Sat 9". */
