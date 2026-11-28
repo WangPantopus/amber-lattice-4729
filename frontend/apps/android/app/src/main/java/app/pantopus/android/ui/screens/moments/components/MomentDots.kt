@@ -4,6 +4,7 @@ package app.pantopus.android.ui.screens.moments.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -18,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -99,6 +101,13 @@ fun MomentDotMarker(
 /** A dot's size on the picture, dp. */
 const val DOT = 30
 
+/** The Moment whose dot card is open now (one at a time): the viewer holds still while it is, as on iPhone. */
+object MomentDotsOpen {
+    val moment = mutableStateOf<String?>(null)
+
+    fun holds(momentId: String?): Boolean = momentId != null && moment.value == momentId
+}
+
 /** The viewer's dots over [moment]'s picture; [mine]: the reader is its author (Remove is offered). */
 @Composable
 fun MomentDotsLayer(
@@ -111,6 +120,10 @@ fun MomentDotsLayer(
     val shown = moment.dots.orEmpty().filter { it.drawable && it.id !in gone }
     if (shown.isEmpty()) return
     var open by remember(moment.id) { mutableStateOf<String?>(null) }
+    DisposableEffect(moment.id, open) {
+        MomentDotsOpen.moment.value = if (open != null) moment.id else null
+        onDispose { if (MomentDotsOpen.moment.value == moment.id) MomentDotsOpen.moment.value = null }
+    }
     val picture =
         moment.width
             ?.let { w -> moment.height?.let { h -> IntSize(w, h) } }
@@ -118,6 +131,17 @@ fun MomentDotsLayer(
     BoxWithConstraints(modifier = modifier.fillMaxSize().testTag("moments.viewer.dots")) {
         val frame = stampFrame(picture, constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
         val dotPx = DOT * LocalDensity.current.density
+        if (open != null) {
+            // A tap away from the card closes it and goes nowhere else (as on iPhone).
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .holdsItsFinger()
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { open = null }
+                        .testTag("moments.viewer.dotsAway"),
+            )
+        }
         shown.forEach { dot ->
             val cx = frame.left + dot.x.toFloat() * frame.width
             val cy = frame.top + dot.y.toFloat() * frame.height

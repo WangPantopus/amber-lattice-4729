@@ -67,3 +67,15 @@ val MomentDotDto.linkHost: String?
             ?.host
             ?.removePrefix("www.")
             ?.takeIf { it.isNotBlank() }
+
+/**
+ * What the author typed as an https link, as it goes out ("example.com" reads as https://example.com, as on iPhone);
+ * null for anything else (the server takes only https, CONTRACT 7c).
+ */
+fun httpsLink(typed: String?): String? {
+    val trimmed = typed?.trim().orEmpty()
+    if (trimmed.isEmpty() || trimmed.any { it.isWhitespace() }) return null
+    val full = if (trimmed.contains("://")) trimmed else "https://$trimmed"
+    val uri = runCatching { java.net.URI(full) }.getOrNull() ?: return null
+    return full.takeIf { uri.scheme.equals("https", true) && !uri.host.isNullOrBlank() && it.length <= MomentDotDto.URL_LETTERS }
+}

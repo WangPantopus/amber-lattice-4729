@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import app.pantopus.android.data.api.models.moments.MomentDotDto
 import app.pantopus.android.data.api.models.moments.MomentDotKinds
 import app.pantopus.android.data.api.models.moments.drawable
+import app.pantopus.android.data.api.models.moments.httpsLink
 import app.pantopus.android.ui.screens.moments.components.DOT
 import app.pantopus.android.ui.screens.moments.components.MomentDotMarker
 import app.pantopus.android.ui.screens.moments.components.kindWords
@@ -88,13 +89,22 @@ internal val MomentsComposeUiState.sentDots: List<MomentDotDto>?
     get() =
         dots
             .takeIf { media != null }
-            ?.filter { it.drawable && !(madeUp && it.kind == MomentDotKinds.LINK) }
+            ?.filter { it.ready && !(madeUp && it.kind == MomentDotKinds.LINK) }
             ?.map { it.trimmed() }
             ?.takeIf { it.isNotEmpty() }
 
-/** A dot's words as they go out: trimmed, an empty title left out. */
+/** Whole enough to go out: a link only as an https address (the server refuses the Moment otherwise). */
+private val MomentDotDto.ready: Boolean
+    get() = if (kind == MomentDotKinds.LINK) httpsLink(url) != null else drawable
+
+/** A dot's words as they go out: trimmed, a link as its https address, an empty title left out. */
 private fun MomentDotDto.trimmed(): MomentDotDto =
-    copy(text = text?.trim(), label = label?.trim(), url = url?.trim(), title = title?.trim()?.ifEmpty { null })
+    copy(
+        text = text?.trim(),
+        label = label?.trim(),
+        url = if (kind == MomentDotKinds.LINK) httpsLink(url) else null,
+        title = title?.trim()?.ifEmpty { null },
+    )
 
 /** A new dot of [kind], near the middle of the picture, a little apart from those already there. */
 private fun newDot(
@@ -308,7 +318,13 @@ private fun DotEditor(
                 Field(dot.title.orEmpty(), "Title (optional)", MomentDotDto.TITLE_LETTERS, "moments.studio.dot.title") {
                     onChange(dot.copy(title = it))
                 }
-                Hint("Only an https link.")
+                Hint(
+                    if (dot.url.isNullOrBlank() || httpsLink(dot.url) != null) {
+                        "Only an https link."
+                    } else {
+                        "This one won't go out: only an https link."
+                    },
+                )
             }
     }
 }
