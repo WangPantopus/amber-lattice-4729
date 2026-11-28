@@ -88,13 +88,13 @@ final class MomentsVideoController {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if let loop { MomentLoopPlayback.again(player, from: loop) } else { onEnd?() }
+                if let loop = self.loop { MomentLoopPlayback.again(self.player, from: loop) } else { self.onEnd?() }
             }
         }
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 20), queue: .main) { [weak self] time in
             MainActor.assumeIsolated {
                 // A loop is timed by the viewer's clock, as a photo is (CONTRACT 7j).
-                guard let self, loop == nil else { return }
+                guard let self, self.loop == nil else { return }
                 guard let duration = self.player.currentItem?.duration.seconds, duration.isFinite, duration > 0 else { return }
                 self.onProgress?(min(1, max(0, time.seconds / duration)))
             }
