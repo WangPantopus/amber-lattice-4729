@@ -11,8 +11,10 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import retrofit2.Retrofit
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
 import retrofit2.http.Query
 import javax.inject.Singleton
 
@@ -41,7 +43,99 @@ interface LivingApi {
     suspend fun atlasSearch(
         @Body body: LivingAtlasSearchBody,
     ): LivingAtlasSearchPage
+
+    /** CONTRACT 9c: the person's own followed places (private to them). */
+    @GET("api/reinvented/places")
+    suspend fun places(): LivingPlacesResponse
+
+    /** CONTRACT 9c: follow a place; the same place again answers the one kept. `409 PLACES_FULL`, `400 PLACE_INVALID`. */
+    @POST("api/reinvented/places")
+    suspend fun follow(
+        @Body body: LivingFollowBody,
+    ): LivingFollowAnswer
+
+    /** CONTRACT 9c: stop following it. */
+    @DELETE("api/reinvented/places/{id}")
+    suspend fun unfollow(
+        @Path("id") id: String,
+    )
+
+    /** CONTRACT 9c: curiosity constellations within five miles; the phone's place in the body, never kept or logged. */
+    @POST("api/reinvented/constellations")
+    suspend fun constellations(
+        @Body body: LivingPointDto,
+    ): LivingConstellationsDto
 }
+
+/** A place the person follows (a hometown, Kyoto): its point rounded by the server to about a kilometre. */
+@JsonClass(generateAdapter = true)
+data class LivingFollowedPlaceDto(
+    val id: String,
+    val label: String,
+    val latitude: Double,
+    val longitude: Double,
+)
+
+@JsonClass(generateAdapter = true)
+data class LivingPlacesResponse(
+    @Lossy val places: List<LivingFollowedPlaceDto> = emptyList(),
+)
+
+@JsonClass(generateAdapter = true)
+data class LivingFollowBody(
+    val label: String,
+    val latitude: Double,
+    val longitude: Double,
+)
+
+@JsonClass(generateAdapter = true)
+data class LivingFollowAnswer(
+    val place: LivingFollowedPlaceDto? = null,
+)
+
+/** CONTRACT 9c: what is near, each something the reader may already open. */
+@JsonClass(generateAdapter = true)
+data class LivingConstellationsDto(
+    @Lossy val retakes: List<LivingRetakeStarDto> = emptyList(),
+    @Lossy val skies: List<LivingSkyStarDto> = emptyList(),
+    @Lossy val specimens: List<LivingSpecimenStarDto> = emptyList(),
+    @Lossy val answers: List<LivingAnswerStarDto> = emptyList(),
+) {
+    val isEmpty: Boolean get() = retakes.isEmpty() && skies.isEmpty() && specimens.isEmpty() && answers.isEmpty()
+}
+
+/** A Retake start and how many frames the reader may see. */
+@JsonClass(generateAdapter = true)
+data class LivingRetakeStarDto(
+    val id: String,
+    val title: String? = null,
+    val frames: Int? = null,
+)
+
+/** A Convergence piece and how many pieces it holds. */
+@JsonClass(generateAdapter = true)
+data class LivingSkyStarDto(
+    val id: String,
+    val kind: String? = null,
+    val title: String? = null,
+    val pieces: Int? = null,
+)
+
+/** A Moment or a post with kept field cards, and the cards' names. */
+@JsonClass(generateAdapter = true)
+data class LivingSpecimenStarDto(
+    val type: String,
+    val id: String,
+    val names: List<String> = emptyList(),
+)
+
+/** An Ask marked solved, or an Eyes-on Ask with answers. */
+@JsonClass(generateAdapter = true)
+data class LivingAnswerStarDto(
+    val id: String,
+    val question: String? = null,
+    val answers: Int? = null,
+)
 
 @JsonClass(generateAdapter = true)
 data class LivingAskBody(

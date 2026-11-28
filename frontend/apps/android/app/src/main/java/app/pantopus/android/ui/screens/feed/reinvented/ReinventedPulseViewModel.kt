@@ -243,6 +243,7 @@ class ReinventedPulseViewModel
                             cursor = page.nextCursor,
                             end = if (page.nextCursor == null) EXPLORE_END else null,
                             pause = page.pause,
+                            followed = if (appending) now.followed else page.followed.filter(keep),
                             loadingMore = false,
                             refreshing = false,
                             load = ReinventedPulseState.Load.Loaded,
@@ -338,6 +339,8 @@ data class ReinventedPulseState(
     val pickedCount: Int = 0,
     /** Explore pauses here ("Keep exploring?") until the person asks for more. */
     val pause: String? = null,
+    /** Explore's first page: items from the places the reader follows (phase 4, `feed/living/LivingPlaces.kt`). */
+    val followed: List<ReinventedListItemDto> = emptyList(),
 ) {
     /** Explore has more and waits for "Keep exploring?". */
     val pausedForMore: Boolean

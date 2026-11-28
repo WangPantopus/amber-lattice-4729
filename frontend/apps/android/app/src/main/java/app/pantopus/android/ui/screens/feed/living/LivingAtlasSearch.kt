@@ -215,6 +215,8 @@ internal fun LivingAtlasSearch(
             error != null ->
                 Text(error, fontSize = 14.sp, color = PantopusColors.appText, modifier = Modifier.testTag("reinventedAtlas.search.error"))
             q != null -> Results(q, state, viewModel::more) { open(it, onOpenOwn, onOpenMoment, onOpenPost) }
+            // While nothing is searched: what is near (CONTRACT 9c).
+            else -> LivingConstellations()
         }
     }
 }

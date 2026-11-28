@@ -36,6 +36,24 @@ class LivingRepository
             cursor: String?,
         ): NetworkResult<LivingAtlasSearchPage> = guarded { api.atlasSearch(LivingAtlasSearchBody(q, cursor)) }
 
+        /** CONTRACT 9c: the person's followed places. */
+        suspend fun places(): NetworkResult<List<LivingFollowedPlaceDto>> = guarded { api.places().places }
+
+        /** CONTRACT 9c: follow a place, by the name and point the place picker answered. */
+        suspend fun follow(
+            label: String,
+            latitude: Double,
+            longitude: Double,
+        ): NetworkResult<LivingFollowAnswer> = guarded { api.follow(LivingFollowBody(label.take(MAX_LABEL), latitude, longitude)) }
+
+        suspend fun unfollow(id: String): NetworkResult<Unit> = guarded { api.unfollow(id) }
+
+        /** CONTRACT 9c: constellations near the phone's place (in the body, never kept). */
+        suspend fun constellations(
+            latitude: Double,
+            longitude: Double,
+        ): NetworkResult<LivingConstellationsDto> = guarded { api.constellations(LivingPointDto(latitude, longitude)) }
+
         private suspend fun <T> guarded(call: suspend () -> T): NetworkResult<T> {
             val answer = safeApiCall { call() }
             if (answer is NetworkResult.Failure && answer.error.serverCode == StudioRepository.SWITCH_OFF) feature.refusedOff()
@@ -52,6 +70,7 @@ internal fun searchRefusal(error: NetworkError): String =
     }
 
 private const val HTTP_BAD_REQUEST = 400
+private const val MAX_LABEL = 60
 private const val HTTP_TOO_MANY = 429
 
 /** A box's side as the map sends it: five decimals, a dot whatever the phone's language. */

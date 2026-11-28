@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.pulse.ReinventedPoint
 import app.pantopus.android.ui.components.EmptyState
+import app.pantopus.android.ui.screens.feed.living.LivingFollowedPlaces
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCard
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
@@ -139,6 +140,10 @@ private fun LoadedRows(
         // Always the first slot, empty until the strip comes: the strip then grows in place at the top instead of
         // landing above the row the list keeps in view.
         item(key = "top") { top?.invoke() }
+        // Places you follow (phase 4, `feed/living/LivingPlaces.kt`), at the top of Explore only.
+        if (state.reach == ReinventedPulseViewModel.EXPLORE) {
+            item(key = "followed") { LivingFollowedPlaces(state.followed, actions.onRefresh, actions.onOpenMoment) }
+        }
         if (state.items.isEmpty()) item(key = "empty") { EmptyNote(state.reach) }
         items(rows, key = { it.key }) { row ->
             when (row) {

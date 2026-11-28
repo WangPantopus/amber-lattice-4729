@@ -130,6 +130,8 @@ data class ReinventedExploreResponse(
     @Lossy val items: List<ReinventedListItemDto> = emptyList(),
     @Json(name = "next_cursor") val nextCursor: String? = null,
     val pause: String? = null,
+    /** CONTRACT 9c: the first page's items near the places the reader follows (phase 4, `feed/living/LivingPlaces.kt`). */
+    @Lossy val followed: List<ReinventedListItemDto> = emptyList(),
 )
 
 /**
