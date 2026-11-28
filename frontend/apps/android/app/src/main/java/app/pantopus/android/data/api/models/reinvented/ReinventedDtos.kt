@@ -3,6 +3,7 @@ package app.pantopus.android.data.api.models.reinvented
 import app.pantopus.android.data.api.models.feed.FeedPost
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentRingDto
+import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanPinDto
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -139,4 +140,28 @@ data class ReinventedAtlasResponse(
 @JsonClass(generateAdapter = true)
 data class ReinventedKeepBody(
     val keep: Boolean,
+)
+
+/**
+ * A Moment's plan (CONTRACT 6g), on every Moment answer to a switch-on reader: null, or the plan started from it that
+ * this reader may see in Plans (Plans' own rules). `viewer_role` is `host`, `guest` or null.
+ */
+@JsonClass(generateAdapter = true)
+data class MomentPlanDto(
+    val id: String,
+    val kind: String? = null,
+    val title: String = "",
+    @Json(name = "starts_at") val startsAt: String? = null,
+    @Json(name = "ends_at") val endsAt: String? = null,
+    val state: String? = null,
+    @Json(name = "going_count") val goingCount: Int? = null,
+    @Json(name = "area_label") val areaLabel: String? = null,
+    @Json(name = "viewer_role") val viewerRole: String? = null,
+)
+
+/** `POST /api/reinvented/moments/:id/plan` (CONTRACT 6g): the plan as `POST /api/plans` answers it, and the Moment. */
+@JsonClass(generateAdapter = true)
+data class ReinventedMomentPlanResponse(
+    val plan: PlanDto,
+    val moment: MomentDto? = null,
 )
