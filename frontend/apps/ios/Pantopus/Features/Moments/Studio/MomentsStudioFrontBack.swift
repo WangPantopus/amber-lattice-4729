@@ -259,10 +259,12 @@ struct MomentsFrontBackScreen: View {
     /// The front camera is the big picture.
     @State private var frontBig = false
     @State private var taking = false
+    /// The screen's safe area (a reader that ignores it sees none, so it is read behind the screen).
+    @State private var safe = EdgeInsets()
 
     var body: some View {
         GeometryReader { geo in
-            let inset = MomentsFrontBack.smallFrame(safeTop: geo.safeAreaInsets.top)
+            let inset = MomentsFrontBack.smallFrame(safeTop: safe.top)
             ZStack(alignment: .top) {
                 Color.black
                 // The big picture fills the screen centred, as the viewer will show the shot, and is never wider.
@@ -273,12 +275,19 @@ struct MomentsFrontBackScreen: View {
                     small.position(x: inset.midX, y: inset.midY)
                 }
                 controls(screen: geo.size, inset: inset)
-                    .padding(.top, geo.safeAreaInsets.top)
-                    .padding(.bottom, geo.safeAreaInsets.bottom)
+                    .padding(.top, safe.top)
+                    .padding(.bottom, safe.bottom)
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
         .ignoresSafeArea()
+        .background {
+            GeometryReader { area in
+                Color.clear
+                    .onAppear { safe = area.safeAreaInsets }
+                    .onChange(of: area.safeAreaInsets) { _, insets in safe = insets }
+            }
+        }
         .environment(\.colorScheme, .dark)
         .task {
             guard !MomentsFrontBackStandIn.isOn else { return }
