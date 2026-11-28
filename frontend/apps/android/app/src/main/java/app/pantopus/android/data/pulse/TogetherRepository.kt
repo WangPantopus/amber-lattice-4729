@@ -1,6 +1,7 @@
 package app.pantopus.android.data.pulse
 
 import app.pantopus.android.data.api.models.moments.MomentDto
+import app.pantopus.android.data.api.models.reinvented.ConvergenceDto
 import app.pantopus.android.data.api.models.reinvented.EyesOnAskDto
 import app.pantopus.android.data.api.models.reinvented.EyesOnNearBody
 import app.pantopus.android.data.api.models.reinvented.MomentPinDto
@@ -11,6 +12,7 @@ import app.pantopus.android.data.api.models.reinvented.MomentReplyBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyDto
 import app.pantopus.android.data.api.models.reinvented.MomentReplyReportBody
 import app.pantopus.android.data.api.models.reinvented.RetakeDto
+import app.pantopus.android.data.api.models.reinvented.SkyStripDayDto
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.safeApiCall
 import app.pantopus.android.data.api.services.TogetherApi
@@ -74,6 +76,15 @@ class TogetherRepository
             latitude: Double,
             longitude: Double,
         ): NetworkResult<List<EyesOnAskDto>> = guarded { api.eyesOnNear(EyesOnNearBody(latitude, longitude)).asks }
+
+        /** CONTRACT 8h: a convergence, its photos and its colours. */
+        suspend fun convergence(id: String): NetworkResult<ConvergenceDto> = guarded { api.convergence(id).convergence }
+
+        /** CONTRACT 8h: a place's sunsets over [days] days. */
+        suspend fun skyStrip(
+            cell: String,
+            days: Int,
+        ): NetworkResult<List<SkyStripDayDto>> = guarded { api.skyStrip(cell, days).days }
 
         /** CONTRACT 8: a Moment made in the Studio with phase 3's keys ([TogetherCreate]). */
         suspend fun createMoment(body: Map<String, Any?>): NetworkResult<MomentDto> = guarded { api.createMoment(body).moment }

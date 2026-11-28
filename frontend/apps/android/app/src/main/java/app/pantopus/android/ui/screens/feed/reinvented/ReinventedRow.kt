@@ -5,6 +5,7 @@ import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.data.api.models.reinvented.PulseTravelDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedBandDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedListItemDto
+import app.pantopus.android.data.api.models.reinvented.shownConvergence
 import app.pantopus.android.data.api.models.reinvented.shownRetake
 import app.pantopus.android.data.pulse.ReinventedBox
 import app.pantopus.android.data.pulse.ReinventedPoint
@@ -90,9 +91,12 @@ private fun ReinventedListItemDto.row(byId: Map<String, PulsePostCardContent>): 
     }
 }
 
-/** A Retake is one row (CONTRACT 8e): the first of its frames in the list stands for it and opens the whole Retake. */
+/**
+ * A Retake (CONTRACT 8e) and a convergence's piece (8h) are one row each: the first of their Moments in the list stands
+ * for the whole and opens it.
+ */
 private fun ReinventedListItemDto.repeatsPiece(seen: MutableSet<String>): Boolean {
-    val key = moment?.shownRetake?.let { "retake-${it.startId}" } ?: return false
+    val key = moment?.shownRetake?.let { "retake-${it.startId}" } ?: moment?.shownConvergence?.let { "sky-${it.id}" } ?: return false
     return !seen.add(key)
 }
 
