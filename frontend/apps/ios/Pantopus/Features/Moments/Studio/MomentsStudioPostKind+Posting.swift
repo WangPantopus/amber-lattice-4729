@@ -172,6 +172,7 @@ extension MomentsComposerModel {
             )
             request.mediaLocations = [taken]
         }
+        if placed, TogetherStudio.shared.asksEyesOn(model: self) == true { request.geocodePlaceId = pickedVenue?.placeId } // 8f
         return request
     }
 
