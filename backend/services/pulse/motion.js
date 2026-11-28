@@ -3,9 +3,10 @@
 // Pulse, reinvented, phase 5: a Live Photo's motion on a Moment (coord CONTRACT 10b, PHASE-5 piece C). The motion clip of
 // a Live Photo (Android: a motion photo) is kept beside the Moment's photo: stored in the same private bucket, in the
 // Moment's own folder (so the 7-day cleanup, Delete, Delete for good and a deleted account remove it with the photo, and
-// a kept Moment keeps it), and handed out as the same short signed link, only while the photo's link is (so nobody but
-// its author gets it before the photo's picture check has passed). Its sound is kept as it came; the new viewers play it
-// silently once and with sound on press and hold. A switched-off reader and the 2.1.6 apps never get it: the still.
+// a kept Moment keeps it), and handed out as the same short signed link, only while the photo's link is, and to nobody
+// but its author until the clip's own frames have passed the picture check (a clip can show what its still does not).
+// Its sound is kept as it came; the new viewers play it silently once and with sound on press and hold. A switched-off
+// reader and the 2.1.6 apps never get it: the still.
 
 const media = require('../moments/momentMedia');
 const penName = require('../penName');
@@ -119,10 +120,14 @@ function motionKeys(m) {
   return [m?.motion?.key].filter(media.isMomentKey);
 }
 
-/** A Moment's `motion` as a switch-on reader gets it (CONTRACT 10b): a link only while its photo's link is given. */
-function motionOf(m, links, show) {
+/**
+ * A Moment's `motion` as a switch-on reader gets it (CONTRACT 10b): a link only while its photo's link is given, and to
+ * anyone but its author only once the clip's own picture check has passed (`own`: the reader wrote it).
+ */
+function motionOf(m, links, show, own = false) {
   const motion = m?.motion;
   if (!motion?.key) return null;
+  if (!own && motion.check !== 'passed') return null;
   return { url: show ? links.get(motion.key) || null : null, duration_ms: motion.duration_ms ?? null };
 }
 

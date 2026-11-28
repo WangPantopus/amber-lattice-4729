@@ -648,8 +648,9 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
       convergence: m.convergence ? require('../pulse/convergence').answerOf(m) : null,
       // A loop (CONTRACT 7j): the span the new viewers repeat, fitted to the stored video; null for any other.
       loop: m.loop ? require('../pulse/loop').answerOf(m) : null,
-      // A Live Photo's motion (CONTRACT 10b), its link given exactly when the photo's is; null for any other.
-      motion: motionMedia.motionOf(m, links, Boolean(showMedia)),
+      // A Live Photo's motion (CONTRACT 10b), its link given exactly when the photo's is, to others only once the
+      // clip's own picture check has passed; null for any other.
+      motion: motionMedia.motionOf(m, links, Boolean(showMedia), own),
       // Shown as its author composed it (CONTRACT 10c): fit on its backdrop, and a video's place on the canvas.
       ...require('../pulse/composed').answerOf(m),
     } : {}),

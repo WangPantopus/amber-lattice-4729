@@ -384,7 +384,7 @@ router.post('/', createLimiter, async (req, res) => {
     // read only while the switch is on for the author (their values are kept for every Moment they post then, so an
     // edit may add a stamp). Sent while it is off: 403 PULSE_REINVENTED_OFF, so the app goes back to today's screens.
     const reinvented = await store.reinventedOn(req.user);
-    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions', 'retake', 'retake_of', 'eyes_on_for', 'seal', 'join_convergence', 'pinboard', 'pinboard_of', 'your_day', 'heading', 'loop', 'whole', 'placement'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+    if (!reinvented && ['stamps', 'elevation', 'guess', 'explore', 'play', 'dots', 'deck', 'replies_shown', 'mentions', 'retake', 'retake_of', 'eyes_on_for', 'seal', 'join_convergence', 'pinboard', 'pinboard_of', 'your_day', 'heading', 'loop', 'whole', 'placement', 'backdrop'].some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
       throw store.reinventedOff();
     }
     const studio = reinvented ? momentStamps.parseStudio(req.body) : null;
