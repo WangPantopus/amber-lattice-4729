@@ -327,7 +327,8 @@ async function issueRefund(membership, { amountCents, reason } = {}) {
   if (amountCents != null) {
     refundPayload.amount = Math.round(amountCents);
   }
-  const refund = await stripe.refunds.create(refundPayload, opts);
+  const idempotencyKey = `persona-sub-refund:${membership.id}:${invoice.charge}:${refundPayload.amount ?? 'full'}:${refundPayload.metadata.pantopus_reason}`;
+  const refund = await stripe.refunds.create(refundPayload, { ...opts, idempotencyKey });
 
   logger.info('persona_lifecycle.refund_issued', {
     membershipId: membership.id,

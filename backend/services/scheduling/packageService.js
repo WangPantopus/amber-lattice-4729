@@ -120,10 +120,56 @@ async function purchasePackage({ pkg, buyerUserId, clientRequestId }) {
   return { success: true, credit, clientSecret: res.clientSecret, paymentId: res.paymentId };
 }
 
+/**
+ * Verify that a package credit is either free (payment_id is null) or backed by a
+ * confirmed, un-refunded, un-disputed Stripe payment. When the local row is still
+ * waiting on its hold (webhook lag right after checkout), ask Stripe once and record
+ * a placed hold the way its webhook does before refusing.
+ */
+async function verifyCreditPayment(credit) {
+  if (!credit?.payment_id) return { paid: true };
+  const { data: payment, error } = await supabaseAdmin
+    .from('Payment')
+    .select('id, payment_status, stripe_payment_intent_id, refunded_amount, dispute_id')
+    .eq('id', credit.payment_id)
+    .maybeSingle();
+  if (error || !payment) {
+    return { paid: false, error: 'PAYMENT_UNAVAILABLE', message: 'Could not verify payment for this package.' };
+  }
+  if (payment.dispute_id || (payment.refunded_amount || 0) > 0) {
+    return { paid: false, error: 'PAYMENT_NOT_CONFIRMED', message: 'This package payment is no longer active.' };
+  }
+  if (PAID_PAYMENT_STATES.includes(payment.payment_status)) {
+    return { paid: true };
+  }
+  if (payment.payment_status === PAYMENT_STATES.AUTHORIZE_PENDING && payment.stripe_payment_intent_id) {
+    try {
+      // The payment state machine's own step (hold expiry and charge recorded, the intent checked against the row).
+      const synced = await stripeService.syncPaymentAuthorizationStatus(payment.id);
+      if (PAID_PAYMENT_STATES.includes(synced?.payment_status)) return { paid: true };
+    } catch (err) {
+      logger.warn('[packageService] Stripe reconcile failed while verifying package credit', {
+        creditId: credit.id,
+        paymentId: payment.id,
+        error: err.message,
+      });
+    }
+  }
+  return {
+    paid: false,
+    error: 'PAYMENT_NOT_CONFIRMED',
+    message: 'Complete payment for this package before using its credits.',
+  };
+}
+
 /** Redeem one session credit against a booking (atomic optimistic decrement). */
 async function redeemForBooking({ bookingId, creditId, userId }) {
   const { data: credit } = await supabaseAdmin.from('PackageCredit').select('*').eq('id', creditId).maybeSingle();
   if (!credit || credit.buyer_user_id !== userId) return { success: false, error: 'CREDIT_NOT_FOUND' };
+  const paidCheck = await verifyCreditPayment(credit);
+  if (!paidCheck.paid) {
+    return { success: false, error: paidCheck.error, message: paidCheck.message };
+  }
   if (credit.remaining <= 0) return { success: false, error: 'NO_CREDIT_REMAINING' };
   // Guarded decrement (remaining unchanged since read) — prevents double-spend under concurrency.
   const { data: dec } = await supabaseAdmin
@@ -170,4 +216,11 @@ async function restoreForBooking(booking) {
   logger.warn('[packageService] credit restore lost CAS race 3x — leaving un-restored', { creditId: booking.package_credit_id, bookingId: booking.id });
 }
 
-module.exports = { purchasePackage, redeemForBooking, restoreForBooking };
+module.exports = {
+  purchasePackage,
+  redeemForBooking,
+  restoreForBooking,
+  verifyCreditPayment,
+  PAID_PAYMENT_STATES,
+  OWED_PAYMENT_STATES,
+};

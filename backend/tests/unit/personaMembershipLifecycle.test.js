@@ -376,7 +376,11 @@ describe('POST /membership/refund-request', () => {
       charge: 'ch_fan',
       reason: 'requested_by_customer',
     });
-    expect(refundOpts).toEqual({ stripeAccount: STRIPE_ACCOUNT });
+    // The key makes a repeated request return the first refund instead of sending the money back twice.
+    expect(refundOpts).toEqual({
+      stripeAccount: STRIPE_ACCOUNT,
+      idempotencyKey: 'persona-sub-refund:mem-fan:ch_fan:496:sla_missed_reply_policy',
+    });
 
     // Cancel at period end was triggered.
     expect(mockStripe.subscriptions.update).toHaveBeenCalledWith(

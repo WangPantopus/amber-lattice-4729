@@ -2652,38 +2652,16 @@ router.post(
         .json({ error: 'PAYMENT_FAILED', message: 'Failed to create payment.' });
     }
 
-    // On synchronous charge success, update status and increment total
-    // (For async Stripe confirmation, the webhook handler will also update)
-    await supabaseAdmin
-      .from('SupportTrainFundContribution')
-      .update({ payment_status: 'succeeded' })
-      .eq('id', contribution.id);
-
-    await supabaseAdmin
-      .from('SupportTrainFund')
-      .update({ total_amount: fund.total_amount + amount })
-      .eq('id', fund.id);
-
-    // The donor's receipt, filed in their Receipts (Mail tab, SRV-9).
-    void giftReceiptLetter(contribution.id);
-
-    // Notify organizers + recipient
-    emitSupportTrainEvent({
-      event: 'support_train.donation_received',
-      supportTrainId: st.id,
-      actorUserId: is_anonymous ? null : userId,
-      payload: {
-        amount,
-        // The notification names a donor who isn't anonymous from their profile.
-        donor_name: is_anonymous ? 'Anonymous' : null,
-      },
-    });
-
+    // Leave contribution in 'pending' until Stripe confirms payment via the
+    // payment_intent.succeeded webhook (record_support_train_contribution_succeeded),
+    // which atomically marks it succeeded, increments fund.total_amount, files the
+    // receipt letter, and notifies organizers/recipient.
     res.status(201).json({
       client_secret: paymentResult.clientSecret,
       payment_intent_id: paymentResult.paymentIntentId,
       payment_id: paymentResult.paymentId,
       contribution_id: contribution.id,
+      payment_status: 'pending',
       amount,
       fee_cents: fees.platformFee,
       net_to_recipient: fees.amountToPayee,

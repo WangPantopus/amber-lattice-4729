@@ -18,7 +18,7 @@ const {
   serializeUserIdentityForViewer,
 } = require('../serializers/identitySerializers');
 const { verifiedResidentUserIds } = require('../utils/identityProfiles');
-const { isUnpublishedBusiness } = require('../utils/visibilityPolicy');
+const { isUnpublishedBusiness, unpublishedBusinessIds } = require('../utils/visibilityPolicy');
 const {
   chatAccessUnavailable,
   UNPUBLISHED_BUSINESS_REFUSAL,
@@ -32,7 +32,7 @@ const {
   dropStaffMembership,
 } = require('../services/chatBusinessAccess');
 const s3Service = require('../services/s3Service');
-const { isBlocked, blockCheckUnavailable } = require('../services/blockService');
+const { isBlocked, blockedUserIds, blockCheckUnavailable } = require('../services/blockService');
 const {
   getGigOwnerMessagingContext,
   closedGigRoomIds,
@@ -758,7 +758,8 @@ async function deliverNewMessage(io, { room, message, actorUserId, senderUserId 
       if (prefsError) return;
       const disabled = new Set((disabledRows || []).map((r) => r.user_id));
       const muted = await mutedRecipients;
-      const pushEnabledIds = recipientUserIds.filter((id) => !disabled.has(id) && !muted.has(id));
+      const blocked = senderUserId ? await blockedUserIds(senderUserId) : new Set();
+      const pushEnabledIds = recipientUserIds.filter((id) => !disabled.has(id) && !muted.has(id) && !blocked.has(id));
       if (pushEnabledIds.length === 0) return;
 
       const senderName = broadcast.sender?.displayName || 'Someone';
@@ -1668,6 +1669,42 @@ router.post('/group', verifyToken, groupChatLimiter, validate(createGroupChatSch
   try {
     const userId = req.user.id;
     const { roomName, roomDescription, participantIds } = req.body;
+
+    // Curator accounts cannot initiate group chats
+    if (req.user.accountType === 'curator') {
+      return res.status(403).json({ error: 'This account cannot send messages' });
+    }
+
+    // Ids are compared as the database returns them (lower case).
+    const otherParticipantIds = [...new Set(participantIds.map((id) => String(id).toLowerCase()))]
+      .filter((id) => id !== String(userId));
+
+    // Fail-closed checks across all invited participants, read together: no block either way, and every target
+    // exists, is not a curator account, and is not an unpublished business.
+    if (otherParticipantIds.length > 0) {
+      const [blocked, { data: targetUsers, error: targetUsersError }, unpublished] = await Promise.all([
+        blockedUserIds(userId),
+        supabaseAdmin.from('User').select('id, account_type').in('id', otherParticipantIds),
+        unpublishedBusinessIds(otherParticipantIds),
+      ]);
+      if (otherParticipantIds.some((id) => blocked.has(id))) {
+        return res.status(403).json({ error: 'Unable to message one or more selected users' });
+      }
+      if (targetUsersError) {
+        logger.error('Error verifying group chat participants', { requestId: req.requestId, userId, error: targetUsersError.message });
+        return res.status(500).json({ error: 'Failed to create group chat' });
+      }
+      const userById = new Map((targetUsers || []).map((u) => [String(u.id), u]));
+      for (const targetId of otherParticipantIds) {
+        const target = userById.get(targetId);
+        if (!target || unpublished.has(targetId)) {
+          return res.status(404).json({ error: 'One or more users were not found' });
+        }
+        if (target.account_type === 'curator') {
+          return res.status(403).json({ error: 'This account does not accept messages' });
+        }
+      }
+    }
     
     // Create room
     const { data: room, error: roomError } = await supabaseAdmin
@@ -1691,14 +1728,12 @@ router.post('/group', verifyToken, groupChatLimiter, validate(createGroupChatSch
     ];
     
     // Add other participants
-    for (const participantId of participantIds) {
-      if (participantId !== userId) {
-        participants.push({
-          room_id: room.id,
-          user_id: participantId,
-          role: 'member'
-        });
-      }
+    for (const participantId of otherParticipantIds) {
+      participants.push({
+        room_id: room.id,
+        user_id: participantId,
+        role: 'member'
+      });
     }
     
     const { error: participantError } = await supabaseAdmin
@@ -1721,6 +1756,7 @@ router.post('/group', verifyToken, groupChatLimiter, validate(createGroupChatSch
     });
     
   } catch (err) {
+    if (err.code === 'BLOCK_CHECK_UNAVAILABLE') return res.status(503).json({ error: err.message, code: err.code });
     logger.error('Group chat creation error', { requestId: req.requestId, userId: req.user?.id, error: err.message });
     res.status(500).json({ error: 'Failed to create group chat' });
   }
@@ -2996,6 +3032,9 @@ router.post('/rooms/:roomId/participants', verifyToken, participantLimiter, asyn
     if (!newUserId) {
       return res.status(400).json({ error: 'userId required' });
     }
+    if (!isUuid(newUserId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
     if (await refuseUnlessGroupRoom(roomId, res)) return;
     
     // Verify user is owner/admin
@@ -3010,6 +3049,26 @@ router.post('/rooms/:roomId/participants', verifyToken, participantLimiter, asyn
     
     if (!participant || !['owner', 'admin'].includes(participant.role)) {
       return res.status(403).json({ error: 'Not authorized to add participants' });
+    }
+
+    if (req.user.accountType === 'curator') {
+      return res.status(403).json({ error: 'This account cannot send messages' });
+    }
+
+    // Fail-closed block, curator, and unpublished-business checks before adding/reactivating, read together.
+    const [blocked, { data: targetUser, error: targetUserError }, unpublished] = await Promise.all([
+      isBlocked(userId, newUserId),
+      supabaseAdmin.from('User').select('id, account_type').eq('id', newUserId).maybeSingle(),
+      isUnpublishedBusiness(newUserId),
+    ]);
+    if (blocked) {
+      return res.status(403).json({ error: 'Unable to message this user' });
+    }
+    if (targetUserError || !targetUser || unpublished) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (targetUser.account_type === 'curator') {
+      return res.status(403).json({ error: 'This account does not accept messages' });
     }
     
     const participantSelection = `*, user:user_id(id, username, name, profile_picture_url)`;
@@ -3076,6 +3135,7 @@ router.post('/rooms/:roomId/participants', verifyToken, participantLimiter, asyn
     res.status(201).json({ participant: serializeChatParticipantForViewer(newParticipant, people) });
     
   } catch (err) {
+    if (err.code === 'BLOCK_CHECK_UNAVAILABLE') return res.status(503).json({ error: err.message, code: err.code });
     logger.error('Add participant error', { requestId: req.requestId, userId: req.user?.id, roomId: req.params.roomId, error: err.message });
     res.status(500).json({ error: 'Failed to add participant' });
   }
@@ -3287,11 +3347,35 @@ router.get('/unified-conversations', verifyToken, async (req, res) => {
 router.post('/conversations/:otherUserId/topics', verifyToken, validate(createTopicSchema), async (req, res) => {
   try {
     const userId = req.user.id;
-    const { otherUserId } = req.params;
     const { topicType, topicRefId, title } = req.body;
 
-    if (String(userId) === String(otherUserId)) {
+    if (req.user.accountType === 'curator') {
+      return res.status(403).json({ error: 'This account cannot send messages' });
+    }
+
+    if (!isUuid(req.params.otherUserId)) {
+      return res.status(400).json({ error: 'Invalid user' });
+    }
+    // Compared and ordered as the database returns ids (lower case).
+    const otherUserId = req.params.otherUserId.toLowerCase();
+    if (String(userId) === otherUserId) {
       return res.status(400).json({ error: 'Cannot create topic with yourself' });
+    }
+
+    // Read together: this runs each time a chat about a task or listing opens.
+    const [blocked, { data: otherUser, error: otherUserError }, unpublished] = await Promise.all([
+      isBlocked(userId, otherUserId),
+      supabaseAdmin.from('User').select('id, account_type').eq('id', otherUserId).maybeSingle(),
+      isUnpublishedBusiness(otherUserId),
+    ]);
+    if (blocked) {
+      return res.status(403).json({ error: 'Unable to message this user' });
+    }
+    if (otherUserError || !otherUser || unpublished) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (otherUser.account_type === 'curator') {
+      return res.status(403).json({ error: 'This account does not accept messages' });
     }
 
     const uid1 = userId < otherUserId ? userId : otherUserId;
@@ -3343,6 +3427,7 @@ router.post('/conversations/:otherUserId/topics', verifyToken, validate(createTo
 
     res.status(201).json({ topic, created: true });
   } catch (err) {
+    if (err.code === 'BLOCK_CHECK_UNAVAILABLE') return res.status(503).json({ error: err.message, code: err.code });
     logger.error('Create topic error', { requestId: req.requestId, userId: req.user?.id, error: err.message });
     res.status(500).json({ error: 'Failed to create topic' });
   }

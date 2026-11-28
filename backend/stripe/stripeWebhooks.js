@@ -71,7 +71,10 @@ router.post('/', async (req, res) => {
     eventId: event.id,
   });
 
-  // ── Phase B: Idempotency check ──
+  // ── Phase B: Idempotency & concurrency lease check ──
+  const WEBHOOK_LEASE_MS = 120_000;
+  const nowIso = new Date().toISOString();
+  const leaseUntil = new Date(Date.now() + WEBHOOK_LEASE_MS).toISOString();
   let existingRow = null;
   const { error: insertError } = await supabaseAdmin
     .from('StripeWebhookEvent')
@@ -81,6 +84,7 @@ router.post('/', async (req, res) => {
       event_data: event.data,
       api_version: event.api_version,
       processed: false,
+      locked_until: leaseUntil,
     });
 
   if (insertError) {
@@ -102,6 +106,25 @@ router.post('/', async (req, res) => {
     if (existing && existing.processed) {
       logger.info('Webhook event already processed, skipping', { eventId: event.id });
       return res.json({ received: true, eventId: event.id, duplicate: true });
+    }
+
+    // Atomically acquire the processing lease so concurrent Stripe redeliveries cannot
+    // execute Phase C simultaneously while an earlier attempt is still in flight.
+    const { data: claimed, error: claimError } = await supabaseAdmin
+      .from('StripeWebhookEvent')
+      .update({ locked_until: leaseUntil })
+      .eq('stripe_event_id', event.id)
+      .eq('processed', false)
+      .or(`locked_until.is.null,locked_until.lt.${nowIso}`)
+      .select('id, retry_count');
+
+    if (claimError) {
+      logger.error('Could not acquire Stripe webhook lease', { eventId: event.id, error: claimError.message });
+      return res.status(503).json({ error: 'Webhook handler failed' });
+    }
+    if (!claimed || claimed.length === 0) {
+      logger.info('Webhook event currently locked by another worker, deferring retry', { eventId: event.id });
+      return res.status(503).json({ error: 'Webhook event is currently being processed' });
     }
 
     existingRow = existing;
@@ -295,12 +318,13 @@ router.post('/', async (req, res) => {
         logger.info('Unhandled webhook event type', { type: event.type });
     }
 
-    // Mark event as processed
+    // Mark event as processed and release the concurrency lease
     const { error: processedError } = await supabaseAdmin
       .from('StripeWebhookEvent')
       .update({
         processed: true,
         processed_at: new Date().toISOString(),
+        locked_until: null,
       })
       .eq('stripe_event_id', event.id);
     if (processedError) throw new Error('Could not finish recording Stripe webhook');
@@ -313,16 +337,23 @@ router.post('/', async (req, res) => {
       eventId: event.id,
     });
 
-    // Record error and increment retry_count; the event stays unprocessed and the
-    // error status makes Stripe retry (503 when the database could not answer).
+    // Record error, release the lease, and increment retry_count so Stripe can retry cleanly.
     const currentRetry = existingRow ? (existingRow.retry_count || 0) : 0;
-    await supabaseAdmin
-      .from('StripeWebhookEvent')
-      .update({
-        processing_error: err.message,
-        retry_count: currentRetry + 1,
-      })
-      .eq('stripe_event_id', event.id);
+    try {
+      await supabaseAdmin
+        .from('StripeWebhookEvent')
+        .update({
+          processing_error: err.message,
+          retry_count: currentRetry + 1,
+          locked_until: null,
+        })
+        .eq('stripe_event_id', event.id);
+    } catch (releaseErr) {
+      logger.error('Failed to release Stripe webhook lease after error', {
+        eventId: event.id,
+        error: releaseErr.message,
+      });
+    }
 
     return res.status(err.statusCode === 503 ? 503 : 500).json({ error: 'Webhook handler failed' });
   }
@@ -633,23 +664,42 @@ async function handlePaymentIntentSucceeded(paymentIntent) {
     cardUpdates.payment_method_brand = charge.payment_method_details?.card?.brand;
   }
 
-  // Support Train gift fund contribution: update contribution status on async confirmation
+  // Support Train gift fund contribution: atomically confirm contribution & increment total on capture
   if (paymentIntent.metadata?.type === 'support_train_gift_fund' && paymentIntent.metadata?.contribution_id) {
-    // supabase-js reports a failed update in { error } rather than throwing; a
-    // contribution left pending would show a gift that went through as unpaid.
-    assertSupabaseOk(await supabaseAdmin
-      .from('SupportTrainFundContribution')
-      .update({ payment_status: 'succeeded' })
-      .eq('id', paymentIntent.metadata.contribution_id)
-      .eq('payment_status', 'pending'), 'SupportTrainFundContribution record failed', {
-      contributionId: paymentIntent.metadata.contribution_id,
-    });
-    logger.info('Updated SupportTrainFundContribution on PI succeeded', {
-      contributionId: paymentIntent.metadata.contribution_id,
-    });
-    // The donor's receipt in their Mail, made once whichever path recorded the gift (Mail tab, SRV-9).
-    // eslint-disable-next-line global-require
-    void require('../services/supportTrainNotifications').giftReceiptLetter(paymentIntent.metadata.contribution_id);
+    const contributionId = paymentIntent.metadata.contribution_id;
+    const { data: rpcResult, error: rpcErr } = await supabaseAdmin.rpc(
+      'record_support_train_contribution_succeeded',
+      { p_contribution_id: contributionId },
+    );
+    if (rpcErr) {
+      logger.error('SupportTrainFundContribution record failed', {
+        contributionId,
+        error: rpcErr.message,
+      });
+      throw Object.assign(new Error('SupportTrainFundContribution record failed'), { statusCode: 503 });
+    }
+    if (rpcResult?.transitioned) {
+      logger.info('Updated SupportTrainFundContribution on PI succeeded', { contributionId });
+      // eslint-disable-next-line global-require
+      const { giftReceiptLetter, emitSupportTrainEvent } = require('../services/supportTrainNotifications');
+      void giftReceiptLetter(contributionId);
+      const contrib = rpcResult.contribution;
+      const supportTrainId = paymentIntent.metadata.support_train_id;
+      if (supportTrainId && contrib) {
+        const isAnon = Boolean(contrib.is_anonymous);
+        void emitSupportTrainEvent({
+          event: 'support_train.donation_received',
+          supportTrainId,
+          actorUserId: isAnon ? null : contrib.contributor_user_id,
+          payload: {
+            amount: contrib.amount,
+            donor_name: isAnon ? 'Anonymous' : null,
+          },
+        }).catch((notifyErr) => {
+          logger.warn('Support Train donation event skipped', { contributionId, error: notifyErr.message });
+        });
+      }
+    }
   }
 
   if (paymentIntent.capture_method === 'manual') {
@@ -1285,32 +1335,42 @@ async function handleDisputeCreated(dispute) {
       error: err.message,
     });
 
-    // Flag the payment so an admin dashboard can query for failed evidence drafts
-    await supabaseAdmin
-      .from('Payment')
-      .update({
-        metadata: {
-          ...(payment.metadata || {}),
-          evidence_auto_draft_failed: true,
-          evidence_failure_reason: err.message,
-        },
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', payment.id);
+    // Guard against transient DB/AbortError inside this detached async handler so
+    // an unhandledRejection can never crash the API process.
+    try {
+      // Flag the payment so an admin dashboard can query for failed evidence drafts
+      await supabaseAdmin
+        .from('Payment')
+        .update({
+          metadata: {
+            ...(payment.metadata || {}),
+            evidence_auto_draft_failed: true,
+            evidence_failure_reason: err.message,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', payment.id);
 
-    // Notify the payer so a human is aware. An invoice payment has no gig: like the other dispute
-    // notices, this one names and opens the invoice (it opened /gigs/null).
-    createNotification({
-      userId: payment.payer_id,
-      type: 'dispute_evidence_failed',
-      title: 'Action may be needed on your dispute',
-      body: `A dispute was filed on your payment for ${invoiceId ? 'an invoice' : `"${gigTitle}"`}. Our team has been alerted, but you may want to check your email for any communication from your bank.`,
-      icon: '⚠️',
-      link: invoiceId ? `/app/invoice/${invoiceId}` : `/gigs/${payment.gig_id}`,
-      metadata: invoiceId
-        ? { payment_id: payment.id, dispute_id: dispute.id, invoice_id: invoiceId }
-        : { payment_id: payment.id, dispute_id: dispute.id, gig_id: payment.gig_id },
-    });
+      // Notify the payer so a human is aware. An invoice payment has no gig: like the other dispute
+      // notices, this one names and opens the invoice (it opened /gigs/null).
+      await createNotification({
+        userId: payment.payer_id,
+        type: 'dispute_evidence_failed',
+        title: 'Action may be needed on your dispute',
+        body: `A dispute was filed on your payment for ${invoiceId ? 'an invoice' : `"${gigTitle}"`}. Our team has been alerted, but you may want to check your email for any communication from your bank.`,
+        icon: '⚠️',
+        link: invoiceId ? `/app/invoice/${invoiceId}` : `/gigs/${payment.gig_id}`,
+        metadata: invoiceId
+          ? { payment_id: payment.id, dispute_id: dispute.id, invoice_id: invoiceId }
+          : { payment_id: payment.id, dispute_id: dispute.id, gig_id: payment.gig_id },
+      });
+    } catch (fallbackErr) {
+      logger.error('Failed to record dispute evidence fallback', {
+        paymentId: payment.id,
+        disputeId: dispute.id,
+        error: fallbackErr.message,
+      });
+    }
   });
 }
 
