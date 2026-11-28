@@ -6,6 +6,7 @@ import app.pantopus.android.data.api.models.moments.MomentEditBody
 import app.pantopus.android.data.api.models.moments.MomentGuessBody
 import app.pantopus.android.data.api.models.moments.MomentGuessResponse
 import app.pantopus.android.data.api.models.moments.MomentPlayAnswerBody
+import app.pantopus.android.data.api.models.moments.MomentPlayAnswersPageDto
 import app.pantopus.android.data.api.models.moments.MomentPlayItemDto
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewBody
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewDto
@@ -115,6 +116,34 @@ class StudioRepository
             itemId: String,
         ): Boolean =
             when (val answer = safeApiCall { api.takeBackPlay(momentId, itemId) }) {
+                is NetworkResult.Success -> true
+                is NetworkResult.Failure -> {
+                    if (answer.error.serverCode == SWITCH_OFF) feature.refusedOff()
+                    false
+                }
+            }
+
+        /** A question box's answers, to its author (CONTRACT 7b); null when they can't be read. */
+        suspend fun playAnswers(
+            momentId: String,
+            itemId: String,
+            cursor: String?,
+        ): MomentPlayAnswersPageDto? =
+            when (val answer = safeApiCall { api.playAnswers(momentId, itemId, cursor) }) {
+                is NetworkResult.Success -> answer.data
+                is NetworkResult.Failure -> {
+                    if (answer.error.serverCode == SWITCH_OFF) feature.refusedOff()
+                    null
+                }
+            }
+
+        /** The author removes one answer from their post (CONTRACT 7b): true once it is gone. */
+        suspend fun removePlayAnswer(
+            momentId: String,
+            itemId: String,
+            answerId: String,
+        ): Boolean =
+            when (val answer = safeApiCall { api.removePlayAnswer(momentId, itemId, answerId) }) {
                 is NetworkResult.Success -> true
                 is NetworkResult.Failure -> {
                     if (answer.error.serverCode == SWITCH_OFF) feature.refusedOff()

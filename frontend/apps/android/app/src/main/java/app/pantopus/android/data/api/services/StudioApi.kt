@@ -7,6 +7,7 @@ import app.pantopus.android.data.api.models.moments.MomentGuessBody
 import app.pantopus.android.data.api.models.moments.MomentGuessResponse
 import app.pantopus.android.data.api.models.moments.MomentPlayAnswerBody
 import app.pantopus.android.data.api.models.moments.MomentPlayAnswerResponse
+import app.pantopus.android.data.api.models.moments.MomentPlayAnswersPageDto
 import app.pantopus.android.data.api.models.moments.MomentSignalResponse
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewBody
 import app.pantopus.android.data.api.models.moments.MomentStampsPreviewResponse
@@ -102,5 +103,21 @@ interface StudioApi {
     suspend fun takeBackPlay(
         @Path("id") id: String,
         @Path("item") item: String,
+    )
+
+    /** `GET /api/reinvented/play/:id/:item/answers` (CONTRACT 7b): a question box's answers, to its author only. */
+    @GET("api/reinvented/play/{id}/{item}/answers")
+    suspend fun playAnswers(
+        @Path("id") id: String,
+        @Path("item") item: String,
+        @Query("cursor") cursor: String? = null,
+    ): MomentPlayAnswersPageDto
+
+    /** `DELETE /api/reinvented/play/:id/:item/answers/:answer`: the author removes one answer; 204. */
+    @DELETE("api/reinvented/play/{id}/{item}/answers/{answer}")
+    suspend fun removePlayAnswer(
+        @Path("id") id: String,
+        @Path("item") item: String,
+        @Path("answer") answer: String,
     )
 }

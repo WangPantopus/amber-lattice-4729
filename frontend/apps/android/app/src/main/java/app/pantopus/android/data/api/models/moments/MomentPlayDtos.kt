@@ -216,3 +216,20 @@ object MomentPlayLimits {
     /** A countdown ends at most 30 days ahead. */
     const val COUNTDOWN_DAYS = 30L
 }
+
+/** One answer in the author's list (CONTRACT 7b, the author's side): a question box's words or a board's note. */
+@JsonClass(generateAdapter = true)
+data class MomentPlayAnswerRowDto(
+    val id: String = "",
+    val text: String? = null,
+    val note: String? = null,
+    val at: String? = null,
+    val person: MomentAuthorDto? = null,
+)
+
+/** `GET /api/reinvented/play/:id/:item/answers`: newest first, 50 a page. */
+@JsonClass(generateAdapter = true)
+data class MomentPlayAnswersPageDto(
+    val answers: List<MomentPlayAnswerRowDto> = emptyList(),
+    @Json(name = "next_cursor") val nextCursor: String? = null,
+)

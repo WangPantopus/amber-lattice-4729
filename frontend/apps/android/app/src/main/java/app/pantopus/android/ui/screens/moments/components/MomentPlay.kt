@@ -46,6 +46,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentPlayAnswerBody
+import app.pantopus.android.data.api.models.moments.MomentPlayAnswerRowDto
 import app.pantopus.android.data.api.models.moments.MomentPlayItemDto
 import app.pantopus.android.data.api.models.moments.MomentPlayKinds
 import app.pantopus.android.data.api.models.moments.MomentPlayLimits
@@ -78,6 +79,8 @@ val MomentPlayItemDto.card: Boolean
         when (kind) {
             MomentPlayKinds.POLL -> !question.isNullOrBlank() && (options?.size ?: 0) in 2..MomentPlayLimits.MOST_OPTIONS
             MomentPlayKinds.COUNTDOWN -> !title.isNullOrBlank() && endsAt != null
+            MomentPlayKinds.SLIDER -> !question.isNullOrBlank() && !left.isNullOrBlank() && !right.isNullOrBlank()
+            MomentPlayKinds.QUESTION -> !prompt.isNullOrBlank()
             else -> false
         }
 
@@ -98,6 +101,18 @@ class MomentPlayViewModel
             momentId: String,
             itemId: String,
         ): Boolean = studio.takeBackPlay(momentId, itemId)
+
+        suspend fun answers(
+            momentId: String,
+            itemId: String,
+            cursor: String?,
+        ): Pair<List<MomentPlayAnswerRowDto>, String?>? = studio.playAnswers(momentId, itemId, cursor)?.let { it.answers to it.nextCursor }
+
+        suspend fun removeAnswer(
+            momentId: String,
+            itemId: String,
+            answerId: String,
+        ): Boolean = studio.removePlayAnswer(momentId, itemId, answerId)
     }
 
 /**
@@ -112,11 +127,15 @@ fun MomentPlayLayer(
 ) {
     // What the server answered since the Moment came, by item: the reader's own answer and the results it shows.
     var answered by remember(moment.id) { mutableStateOf(emptyMap<String, MomentPlayItemDto>()) }
+    // The question box being written in, and the one whose answers its author reads (by item id).
+    var writing by remember(moment.id) { mutableStateOf<String?>(null) }
+    var reading by remember(moment.id) { mutableStateOf<String?>(null) }
     val items = moment.play.orEmpty().map { answered[it.id] ?: it }.filter { it.card }
     val waiting = items.any { it.kind in MomentPlayLimits.ANSWERED && it.open == true && it.mine == null }
     // The viewer holds still while the reader has an item to answer (as on iPhone).
-    DisposableEffect(moment.id, waiting) {
-        MomentLayerHold.hold("play", if (waiting) moment.id else null)
+    val busy = waiting || writing != null || reading != null
+    DisposableEffect(moment.id, busy) {
+        MomentLayerHold.hold("play", if (busy) moment.id else null)
         onDispose { MomentLayerHold.release("play", moment.id) }
     }
     if (items.isEmpty()) return
@@ -138,6 +157,9 @@ fun MomentPlayLayer(
             MomentPlayCard(
                 item = item,
                 mine = false,
+                authorName = moment.author.firstName ?: moment.author.name,
+                onWrite = { writing = item.id },
+                onAnswers = { reading = item.id },
                 onAnswer = { body ->
                     scope.launch {
                         play.answer(moment.id, item.id, body)?.let { answered = answered + (item.id to it) }
@@ -162,6 +184,25 @@ fun MomentPlayLayer(
             )
         }
     }
+    items.firstOrNull { it.id == writing }?.let { item ->
+        QuestionWriteDialog(
+            prompt = item.prompt.orEmpty(),
+            onSend = { words ->
+                val back = play.answer(moment.id, item.id, MomentPlayAnswerBody(text = words))
+                back?.let { answered = answered + (item.id to it) }
+                back != null
+            },
+            onDone = { writing = null },
+        )
+    }
+    items.firstOrNull { it.id == reading }?.let { item ->
+        AnswersDialog(
+            prompt = item.prompt.orEmpty(),
+            load = { cursor -> play.answers(moment.id, item.id, cursor) },
+            remove = { answer -> play.removeAnswer(moment.id, item.id, answer) },
+            onDone = { reading = null },
+        )
+    }
 }
 
 /**
@@ -173,8 +214,11 @@ fun MomentPlayCard(
     item: MomentPlayItemDto,
     mine: Boolean,
     modifier: Modifier = Modifier,
+    authorName: String? = null,
     onAnswer: ((MomentPlayAnswerBody) -> Unit)? = null,
     onTakeBack: (() -> Unit)? = null,
+    onWrite: (() -> Unit)? = null,
+    onAnswers: (() -> Unit)? = null,
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -190,6 +234,12 @@ fun MomentPlayCard(
         when (item.kind) {
             MomentPlayKinds.POLL -> PollCard(item, mine, onAnswer, onTakeBack)
             MomentPlayKinds.COUNTDOWN -> CountdownCard(item)
+            MomentPlayKinds.SLIDER -> SliderCard(item, onAnswer)
+            MomentPlayKinds.QUESTION -> QuestionCard(item, authorName, onWrite, onAnswers)
+        }
+        // A reader may take a slider's answer back while it is open (as a vote).
+        if (item.kind == MomentPlayKinds.SLIDER && item.mine != null && item.open == true && onTakeBack != null) {
+            CardButton("Take my answer back", "moments.play.takeBack", onTakeBack)
         }
     }
 }
