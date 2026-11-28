@@ -1,6 +1,8 @@
 package app.pantopus.android.data.pulse
 
 import app.pantopus.android.data.api.models.moments.MomentDto
+import app.pantopus.android.data.api.models.reinvented.EyesOnAskDto
+import app.pantopus.android.data.api.models.reinvented.EyesOnNearBody
 import app.pantopus.android.data.api.models.reinvented.MomentPinDto
 import app.pantopus.android.data.api.models.reinvented.MomentPinReactionBody
 import app.pantopus.android.data.api.models.reinvented.MomentRepliesResponse
@@ -8,8 +10,6 @@ import app.pantopus.android.data.api.models.reinvented.MomentRepliesShownBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyDto
 import app.pantopus.android.data.api.models.reinvented.MomentReplyReportBody
-import app.pantopus.android.data.api.models.reinvented.EyesOnAskDto
-import app.pantopus.android.data.api.models.reinvented.EyesOnNearBody
 import app.pantopus.android.data.api.models.reinvented.RetakeDto
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.safeApiCall
