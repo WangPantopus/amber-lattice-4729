@@ -962,7 +962,12 @@ private fun SentCardBox(
                 color = PantopusColors.cardTextQuiet,
             )
             Text(
-                if (card.byLink && card.status != "claimed") "To whoever opens your link" else "To ${card.toName ?: "them"}",
+                // A link waiting for someone says so, unless it carries the name on its envelope (Wave 3.2).
+                if (card.byLink && card.status != "claimed" && card.toName.isNullOrBlank()) {
+                    "To whoever opens your link"
+                } else {
+                    "To ${card.toName ?: "them"}"
+                },
                 fontSize = 17.sp,
                 lineHeight = 22.sp,
                 fontWeight = FontWeight.SemiBold,
