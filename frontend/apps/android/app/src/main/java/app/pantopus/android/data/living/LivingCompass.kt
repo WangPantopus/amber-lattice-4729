@@ -102,11 +102,12 @@ object LivingCompass : SensorEventListener {
         SensorManager.getRotationMatrixFromVector(rotation, event.values)
         SensorManager.getOrientation(rotation, orientation)
         val magnetic = Math.toDegrees(orientation[0].toDouble())
-        val deg = ((magnetic + declination) % 360 + 360) % 360
+        // Rounded to a tenth first, then brought under 360: 359.96 is 0.0, never 360.0 (which the server drops).
+        val deg = (((magnetic + declination) * 10).roundToInt() / 10.0 % 360 + 360) % 360
         // The rotation vector's own heading estimate (radians), when the phone gives one.
         val estimate = event.values.getOrNull(4)?.takeIf { it > 0f }?.let { Math.toDegrees(it.toDouble()) }
         val accuracy = (estimate ?: byStatus(event.accuracy)).coerceIn(0.0, NO_ESTIMATE)
-        readings.addLast(Reading((deg * 10).roundToInt() / 10.0, accuracy, now))
+        readings.addLast(Reading(deg, accuracy, now))
         while ((readings.firstOrNull()?.atMs ?: now) < now - KEEP_MS) readings.removeFirst()
     }
 
