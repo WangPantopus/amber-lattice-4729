@@ -3,6 +3,7 @@ package app.pantopus.android.ui.screens.feed.reinvented
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentRingDto
 import app.pantopus.android.data.api.models.reinvented.ReinventedBandDto
+import app.pantopus.android.data.api.models.reinvented.ReinventedListItemDto
 import app.pantopus.android.data.api.models.reinvented.shownRetake
 import app.pantopus.android.data.pulse.ReinventedBox
 import app.pantopus.android.data.pulse.ReinventedPoint
@@ -57,11 +58,9 @@ internal fun ReinventedPulseState.rows(cards: List<PulsePostCardContent>): List<
     val rows = mutableListOf<ReinventedRow>()
     var lastBand: String? = null
     val explore = reach == ReinventedPulseViewModel.EXPLORE
-    // A Retake is one row (CONTRACT 8e): its first frame in the list opens the whole Retake.
-    val retakes = mutableSetOf<String>()
+    val pieces = mutableSetOf<String>()
     for ((index, item) in items.withIndex()) {
-        val retake = item.moment?.shownRetake
-        if (retake != null && !retakes.add(retake.startId)) continue
+        if (item.repeatsPiece(pieces)) continue
         if (explore && pickedCount > 0 && index == 0) rows += ReinventedRow.Heading("Today, elsewhere")
         if (explore && pickedCount > 0 && index == pickedCount) rows += ReinventedRow.Heading("New elsewhere")
         val before = rows.size
@@ -80,6 +79,12 @@ internal fun ReinventedPulseState.rows(cards: List<PulsePostCardContent>): List<
         if (explore && why != null && rows.size > before) rows += ReinventedRow.Why(item.type + item.id, why)
     }
     return rows
+}
+
+/** A Retake is one row (CONTRACT 8e): the first of its frames in the list stands for it and opens the whole Retake. */
+private fun ReinventedListItemDto.repeatsPiece(seen: MutableSet<String>): Boolean {
+    val key = moment?.shownRetake?.let { "retake-${it.startId}" } ?: return false
+    return !seen.add(key)
 }
 
 /** The status line over a post that stays, from the kinds today's Pulse has; null for the rest. */
