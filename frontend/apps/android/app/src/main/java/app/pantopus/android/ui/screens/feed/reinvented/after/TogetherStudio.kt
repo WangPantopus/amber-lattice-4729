@@ -48,6 +48,9 @@ internal object TogetherStudio {
     /** The Retake's first picture over the Studio's own while adding a frame (on by default; one tap hides it). */
     val ghostOn = mutableStateOf(true)
 
+    /** "Join tonight's sky" (8h): on by default where it is offered, one tap to leave out. */
+    val joinsSky = mutableStateOf(true)
+
     /** "Start a Retake" and its name (1 to 60 characters). */
     val startsRetake = mutableStateOf(false)
     val retakeTitle = mutableStateOf("")
@@ -74,6 +77,7 @@ internal object TogetherStudio {
     fun reset() {
         context.value = null
         ghostOn.value = true
+        joinsSky.value = true
         startsRetake.value = false
         retakeTitle.value = ""
         opening.value = null
@@ -93,7 +97,11 @@ internal object TogetherStudio {
             null -> {
                 val title = retakeTitle.value.trim().take(TITLE_MAX)
                 val starts = startsRetake.value && title.isNotEmpty() && state.offersRetake
-                if (starts) mapOf("retake" to mapOf("title" to title)) else emptyMap()
+                buildMap {
+                    if (starts) put("retake", mapOf("title" to title))
+                    // The server decides whether a window is open; only a photo the author let join may join one.
+                    if (joinsSky.value && state.offersSky) put("join_convergence", true)
+                }
             }
         }
     }
@@ -111,6 +119,16 @@ internal object TogetherStudio {
 internal val MomentsComposeUiState.offersRetake: Boolean
     get() =
         media is MomentMediaFile.Photo && studioPair == null && pickedTogether <= 1 && !noLocationOn && pin != null &&
+            !floats && shareLaterKey == null && !madeUp && !guess && studioPostKind(StudioPostState.draft.value) == null &&
+            place?.atHome != true
+
+/**
+ * "Join tonight's sky" may be offered (8h): a photo with an exact place shared with people nearby (a piece counts only
+ * those), away from home, under the person's own name, not shared later, not a guess spot or a Pulse post.
+ */
+internal val MomentsComposeUiState.offersSky: Boolean
+    get() =
+        media is MomentMediaFile.Photo && studioPair == null && audience == "nearby" && !noLocationOn && pin != null &&
             !floats && shareLaterKey == null && !madeUp && !guess && studioPostKind(StudioPostState.draft.value) == null &&
             place?.atHome != true
 

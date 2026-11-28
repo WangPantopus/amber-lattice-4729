@@ -62,7 +62,10 @@ fun TogetherStudioRows(
     when (val opened = TogetherStudio.context.value) {
         is TogetherStudio.Context.RetakeFrame -> AddingRow(opened)
         is TogetherStudio.Context.EyesOnAnswer -> AnsweringRow(opened)
-        null -> if (state.offersRetake) StartRetakeRow()
+        null -> {
+            if (state.offersSky) JoinSkyRow()
+            if (state.offersRetake) StartRetakeRow()
+        }
     }
 }
 
@@ -111,6 +114,20 @@ private fun AnsweringRow(answer: TogetherStudio.Context.EyesOnAnswer) {
             lineHeight = 16.sp,
             color = PantopusColors.appTextSecondary,
         )
+    }
+}
+
+/** "Join tonight's sky: your photo stays in the piece", on by default. */
+@Composable
+private fun JoinSkyRow() {
+    val on by TogetherStudio.joinsSky
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.s5).padding(top = 6.dp)) {
+        SwitchRow(
+            title = "Join tonight’s sky: your photo stays in the piece",
+            line = "Only if several people photograph a real sunset or a first snow here in the same minutes.",
+            on = on,
+            tag = "together.studio.sky",
+        ) { TogetherStudio.joinsSky.value = it }
     }
 }
 
