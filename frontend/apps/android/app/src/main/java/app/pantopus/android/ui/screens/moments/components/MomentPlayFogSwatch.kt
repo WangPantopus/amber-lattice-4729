@@ -180,12 +180,28 @@ fun MomentSwatchLayer(
                 )
             }
         }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier =
-                Modifier
-                    .offset(left.dp, (top + height + 8).dp)
+        SwatchChips(
+            colors = swatch.colors.orEmpty().take(6),
+            tried = tried,
+            onTry = { tried = it },
+            modifier = Modifier.offset(left.dp, (top + height + 8).dp),
+        )
+    }
+}
+
+/** The swatch's chips under its box: "Original" (the photo as it is) and each colour to try. */
+@Composable
+private fun SwatchChips(
+    colors: List<String>,
+    tried: String?,
+    onTry: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier =
+            modifier
                     .holdsItsFinger()
                     .clip(RoundedCornerShape(18.dp))
                     .background(PantopusColors.studioBar)
@@ -200,12 +216,12 @@ fun MomentSwatchLayer(
                     Modifier
                         .clip(RoundedCornerShape(12.dp))
                         .background(if (tried == null) Color.White else PantopusColors.studioPillFill)
-                        .clickable(role = Role.Button) { tried = null }
+                        .clickable(role = Role.Button) { onTry(null) }
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                         .semantics { selected = tried == null }
                         .testTag("moments.play.swatch.original"),
             )
-            swatch.colors.orEmpty().take(6).forEachIndexed { at, hex ->
+            colors.forEachIndexed { at, hex ->
                 Box(
                     modifier =
                         Modifier
@@ -213,7 +229,7 @@ fun MomentSwatchLayer(
                             .clip(CircleShape)
                             .background(movingWordsColor(hex))
                             .border(if (tried == hex) 3.dp else 1.dp, Color.White, CircleShape)
-                            .clickable(role = Role.Button) { tried = hex }
+                            .clickable(role = Role.Button) { onTry(hex) }
                             .semantics {
                                 contentDescription = "Try colour ${at + 1}"
                                 selected = tried == hex
@@ -221,5 +237,4 @@ fun MomentSwatchLayer(
                 )
             }
         }
-    }
 }

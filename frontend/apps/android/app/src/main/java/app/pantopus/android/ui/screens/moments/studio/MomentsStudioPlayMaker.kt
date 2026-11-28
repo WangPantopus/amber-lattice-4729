@@ -93,45 +93,68 @@ internal val MomentsComposeUiState.offersPlayCards: Boolean
 /** A poll or countdown as it goes out: its words trimmed and inside the limits; null when it isn't whole. */
 internal fun MomentPlayItemDto.sentCard(now: Instant = Instant.now()): MomentPlayItemDto? =
     when (kind) {
-        MomentPlayKinds.POLL -> {
-            val question = question?.trim()?.take(MomentPlayLimits.QUESTION_LETTERS).orEmpty()
-            val options = options.orEmpty().map { it.trim().take(MomentPlayLimits.OPTION_LETTERS) }.filter { it.isNotEmpty() }
-            copy(
-                question = question,
-                options = options,
-            ).takeIf { question.isNotEmpty() && options.size in 2..MomentPlayLimits.MOST_OPTIONS }
-        }
-        MomentPlayKinds.SLIDER -> {
-            val question = question?.trim()?.take(MomentPlayLimits.QUESTION_LETTERS).orEmpty()
-            copy(
-                question = question,
-                left = left?.trim()?.take(MomentPlayLimits.END_LETTERS),
-                right = right?.trim()?.take(MomentPlayLimits.END_LETTERS),
-                look = if (look == "dial") "dial" else "slider",
-                emoji = emoji?.trim()?.takeIf { it.isNotEmpty() && look != "dial" },
-            )
-        }
-        MomentPlayKinds.QUESTION -> copy(prompt = prompt?.trim()?.take(MomentPlayLimits.QUESTION_LETTERS))
-        MomentPlayKinds.GUESS -> {
-            val options = options.orEmpty().map { it.trim().take(MomentPlayLimits.OPTION_LETTERS) }.filter { it.isNotEmpty() }
-            val right = answer?.toInt()
-            copy(prompt = prompt?.trim()?.take(MomentPlayLimits.QUESTION_LETTERS), options = options)
-                .takeIf { right != null && right in options.indices }
-        }
-        MomentPlayKinds.BOARD ->
-            copy(
-                question = question?.trim()?.take(MomentPlayLimits.QUESTION_LETTERS),
-                xAxis = xAxis?.let { MomentPlayAxisDto(left = it.left?.trim()?.take(24), right = it.right?.trim()?.take(24)) },
-                yAxis = yAxis?.let { MomentPlayAxisDto(bottom = it.bottom?.trim()?.take(24), top = it.top?.trim()?.take(24)) },
-            )
-        MomentPlayKinds.COUNTDOWN -> {
-            val title = title?.trim()?.take(MomentPlayLimits.TITLE_LETTERS).orEmpty()
-            val ends = endsAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
-            val inTime = ends != null && ends.isAfter(now) && ends.isBefore(now.plus(Duration.ofDays(MomentPlayLimits.COUNTDOWN_DAYS)))
-            copy(title = title).takeIf { title.isNotEmpty() && inTime }
-        }
+        MomentPlayKinds.POLL -> copy(question = question.cut(MomentPlayLimits.QUESTION_LETTERS), options = sentOptions())
+        MomentPlayKinds.SLIDER -> sentSlider()
+        MomentPlayKinds.QUESTION -> copy(prompt = prompt.cut(MomentPlayLimits.QUESTION_LETTERS))
+        MomentPlayKinds.GUESS -> sentGuess()
+        MomentPlayKinds.BOARD -> sentBoard()
+        MomentPlayKinds.COUNTDOWN -> sentCountdown(now)
         else -> null
     }?.takeIf { it.card }
+
+/** The most letters in an end's words (a slider's, a board's). */
+private const val END = MomentPlayLimits.END_LETTERS
+
+/** Words trimmed and cut to [most] letters. */
+private fun String?.cut(most: Int): String = this?.trim()?.take(most).orEmpty()
+
+/** The answers that have words, trimmed and cut. */
+private fun MomentPlayItemDto.sentOptions(): List<String> =
+    options.orEmpty().map { it.cut(MomentPlayLimits.OPTION_LETTERS) }.filter { it.isNotEmpty() }
+
+private fun MomentPlayItemDto.sentSlider(): MomentPlayItemDto =
+    copy(
+        question = question.cut(MomentPlayLimits.QUESTION_LETTERS),
+        left = left.cut(MomentPlayLimits.END_LETTERS),
+        right = right.cut(MomentPlayLimits.END_LETTERS),
+        look = if (look == "dial") "dial" else "slider",
+        emoji = emoji?.trim()?.takeIf { it.isNotEmpty() && look != "dial" },
+    )
+
+/** Guess and reveal with its right answer marked among the answers that have words. */
+private fun MomentPlayItemDto.sentGuess(): MomentPlayItemDto? {
+    val options = sentOptions()
+    val right = answer?.toInt() ?: return null
+    return copy(prompt = prompt.cut(MomentPlayLimits.QUESTION_LETTERS), options = options).takeIf { right in options.indices }
+}
+
+private fun MomentPlayItemDto.sentBoard(): MomentPlayItemDto =
+    copy(
+        question = question.cut(MomentPlayLimits.QUESTION_LETTERS),
+        xAxis = MomentPlayAxisDto(left = xAxis?.left.cut(END), right = xAxis?.right.cut(END)),
+        yAxis = MomentPlayAxisDto(bottom = yAxis?.bottom.cut(END), top = yAxis?.top.cut(END)),
+    )
+
+/** A countdown that ends after [now] and inside 30 days. */
+private fun MomentPlayItemDto.sentCountdown(now: Instant): MomentPlayItemDto? {
+    val ends = endsAt?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return null
+    val inTime = ends.isAfter(now) && ends.isBefore(now.plus(Duration.ofDays(MomentPlayLimits.COUNTDOWN_DAYS)))
+    return copy(title = title.cut(MomentPlayLimits.TITLE_LETTERS)).takeIf { inTime }
+}
+
+/** The tray's rows for moving words and the playable kinds made here, those that are offered. */
+@Composable
+internal fun StudioPlaySection(
+    onMovingWords: (() -> Unit)?,
+    onPlayKind: ((String) -> Unit)?,
+) {
+    onMovingWords?.let { StudioMovingWordsRow(onMake = it) }
+    onPlayKind?.let { make ->
+        STUDIO_PLAY_KINDS.forEach { (kind, name, line) ->
+            StudioPlayRow(name, line, "moments.studio.tray.$kind") { make(kind) }
+        }
+    }
+}
 
 /** The tray's Play row for one kind: its name and what it does in one line. */
 @Composable

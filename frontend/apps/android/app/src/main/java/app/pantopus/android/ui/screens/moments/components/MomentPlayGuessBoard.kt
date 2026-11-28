@@ -132,17 +132,21 @@ private fun guessOutcome(item: MomentPlayItemDto): String? {
     val words = mutableListOf<String>()
     item.mine?.right?.let { words += if (it) "You got it." else "Not this time." }
     item.mine?.offBy?.let { words += "You were ${playNumber(it)}${item.range?.unit?.let { u -> " $u" }.orEmpty()} off." }
-    val results = item.results
-    val counts = results?.counts
-    val total = results?.total
-    val answer = item.answer
-    if (counts != null && total != null && total > 0 && answer != null) {
-        val got = counts.getOrElse(answer.toInt()) { 0 }
-        words += "${(got * 100f / total).roundToInt()}% of $total got it."
-    } else if (results?.count != null && results.average != null) {
-        words += "${results.count} guessed; the average is ${playNumber(results.average)}."
-    }
+    everyoneDid(item)?.let { words += it }
     return words.takeIf { it.isNotEmpty() }?.joinToString(" ")
+}
+
+/** How everyone did: the share who got the options' answer, or the range's average. */
+private fun everyoneDid(item: MomentPlayItemDto): String? {
+    val results = item.results ?: return null
+    val counts = results.counts
+    val total = results.total ?: 0
+    val answer = item.answer
+    if (counts != null && answer != null && total > 0) {
+        return "${(counts.getOrElse(answer.toInt()) { 0 } * 100f / total).roundToInt()}% of $total got it."
+    }
+    val count = results.count ?: return null
+    return results.average?.let { "$count guessed; the average is ${playNumber(it)}." }
 }
 
 /**

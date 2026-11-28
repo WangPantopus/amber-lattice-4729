@@ -140,23 +140,17 @@ fun MomentPlayLayer(
     var writing by remember(moment.id) { mutableStateOf<String?>(null) }
     var reading by remember(moment.id) { mutableStateOf<String?>(null) }
     val items = moment.play.orEmpty().map { answered[it.id] ?: it }.filter { it.card }
-    val waiting = items.any { it.kind in MomentPlayLimits.ANSWERED && it.open == true && it.mine == null }
-    // The viewer holds still while the reader has an item to answer (as on iPhone).
-    val busy = waiting || writing != null || reading != null
+    // The viewer holds still while the reader has an item to answer or is writing (as on iPhone).
+    val busy = items.waitForAnswer() || writing != null || reading != null
     DisposableEffect(moment.id, busy) {
         MomentLayerHold.hold("play", if (busy) moment.id else null)
         onDispose { MomentLayerHold.release("play", moment.id) }
     }
     if (items.isEmpty()) return
-    val picture =
-        moment.width
-            ?.let { w -> moment.height?.let { h -> IntSize(w, h) } }
-            ?.takeIf { moment.kind != "text" }
-            ?.let { if (moment.beforeAfter != null) halfOf(it) else it }
     val scope = rememberCoroutineScope()
     BoxWithConstraints(modifier = modifier.fillMaxSize().testTag("moments.viewer.play")) {
         val box = constraints.maxWidth.toFloat()
-        val frame = stampFrame(picture, box, constraints.maxHeight.toFloat())
+        val frame = stampFrame(moment.playPicture(), box, constraints.maxHeight.toFloat())
         val density = LocalDensity.current.density
         val unit = minOf(frame.width, box) / density / BASE_WIDTH_DP
         val edge = 60 * density
@@ -166,21 +160,22 @@ fun MomentPlayLayer(
             MomentPlayCard(
                 item = item,
                 mine = false,
-                authorName = moment.author.firstName ?: moment.author.name,
-                onWrite = { writing = item.id },
-                onAnswers = { reading = item.id },
-                onAnswer = { body ->
-                    scope.launch {
-                        play.answer(moment.id, item.id, body)?.let { answered = answered + (item.id to it) }
-                    }
-                },
-                onTakeBack = {
-                    scope.launch {
-                        if (play.takeBack(moment.id, item.id)) {
-                            answered = answered + (item.id to item.copy(mine = null, results = null, open = true))
-                        }
-                    }
-                },
+                actions =
+                    MomentPlayActions(
+                        authorName = moment.author.firstName ?: moment.author.name,
+                        onWrite = { writing = item.id },
+                        onAnswers = { reading = item.id },
+                        onAnswer = { body ->
+                            scope.launch { play.answer(moment.id, item.id, body)?.let { answered = answered + (item.id to it) } }
+                        },
+                        onTakeBack = {
+                            scope.launch {
+                                if (play.takeBack(moment.id, item.id)) {
+                                    answered = answered + (item.id to item.copy(mine = null, results = null, open = true))
+                                }
+                            }
+                        },
+                    ),
                 modifier =
                     Modifier
                         .centredAt(x, y)
@@ -194,25 +189,10 @@ fun MomentPlayLayer(
         }
     }
     items.firstOrNull { it.id == writing }?.let { item ->
-        val board = item.kind == MomentPlayKinds.BOARD
-        QuestionWriteDialog(
-            prompt = if (board) item.question.orEmpty() else item.prompt.orEmpty(),
-            onSend = { words ->
-                // A board's note goes with the reader's place on it; a question box's answer is its words.
-                val body =
-                    if (board) {
-                        MomentPlayAnswerBody(x = item.mine?.x, y = item.mine?.y, note = words)
-                    } else {
-                        MomentPlayAnswerBody(text = words)
-                    }
-                val back = play.answer(moment.id, item.id, body)
-                back?.let { answered = answered + (item.id to it) }
-                back != null
-            },
+        PlayWriting(
+            item = item,
+            onSend = { body -> play.answer(moment.id, item.id, body)?.also { answered = answered + (item.id to it) } },
             onDone = { writing = null },
-            limit = if (board) BOARD_NOTE_LETTERS else QUESTION_ANSWER_LETTERS,
-            first = if (board) item.mine?.note.orEmpty() else "",
-            hint = if (board) "Your note" else "Your answer",
         )
     }
     items.firstOrNull { it.id == reading }?.let { item ->
@@ -225,21 +205,69 @@ fun MomentPlayLayer(
     }
 }
 
+/** Items still waiting for this reader's answer: open, of a kind that takes one, not yet answered. */
+private fun List<MomentPlayItemDto>.waitForAnswer(): Boolean =
+    any { it.kind in MomentPlayLimits.ANSWERED && it.open == true && it.mine == null }
+
+/** The picture the items sit on: one half of a before and after; none for a text card. */
+private fun MomentDto.playPicture(): IntSize? =
+    width
+        ?.let { w -> height?.let { h -> IntSize(w, h) } }
+        ?.takeIf { kind != "text" }
+        ?.let { if (beforeAfter != null) halfOf(it) else it }
+
 /**
- * One item's card: a dark rounded panel holding the kind's own controls. [onAnswer] and [onTakeBack] are null where the
- * card only shows (the Studio's preview).
+ * The writing box for [item]: a question box's answer, or a board's note (it goes with the reader's place on the
+ * board). [onSend] answers the item as it came back, or null.
  */
+@Composable
+private fun PlayWriting(
+    item: MomentPlayItemDto,
+    onSend: suspend (MomentPlayAnswerBody) -> MomentPlayItemDto?,
+    onDone: () -> Unit,
+) {
+    val board = item.kind == MomentPlayKinds.BOARD
+    QuestionWriteDialog(
+        prompt = if (board) item.question.orEmpty() else item.prompt.orEmpty(),
+        onSend = { words ->
+            val note = MomentPlayAnswerBody(x = item.mine?.x, y = item.mine?.y, note = words)
+            onSend(if (board) note else MomentPlayAnswerBody(text = words)) != null
+        },
+        onDone = onDone,
+        limit = if (board) BOARD_NOTE_LETTERS else QUESTION_ANSWER_LETTERS,
+        first = if (board) item.mine?.note.orEmpty() else "",
+        hint = if (board) "Your note" else "Your answer",
+    )
+}
+
+/** The words of a board's or a slider's take-back button, while the reader's answer may be taken back; else null. */
+private fun MomentPlayItemDto.takeBackWords(): String? =
+    when {
+        mine == null || open != true -> null
+        kind == MomentPlayKinds.BOARD -> "Take my face off"
+        kind == MomentPlayKinds.SLIDER -> "Take my answer back"
+        else -> null
+    }
+
+/** What a card may do: all null where it only shows (the Studio's preview). */
+class MomentPlayActions(
+    val authorName: String? = null,
+    val onAnswer: ((MomentPlayAnswerBody) -> Unit)? = null,
+    val onTakeBack: (() -> Unit)? = null,
+    val onWrite: (() -> Unit)? = null,
+    val onAnswers: (() -> Unit)? = null,
+)
+
+/** One item's card: a dark rounded panel holding the kind's own controls. */
 @Composable
 fun MomentPlayCard(
     item: MomentPlayItemDto,
     mine: Boolean,
     modifier: Modifier = Modifier,
-    authorName: String? = null,
-    onAnswer: ((MomentPlayAnswerBody) -> Unit)? = null,
-    onTakeBack: (() -> Unit)? = null,
-    onWrite: (() -> Unit)? = null,
-    onAnswers: (() -> Unit)? = null,
+    actions: MomentPlayActions = MomentPlayActions(),
 ) {
+    val onAnswer = actions.onAnswer
+    val onTakeBack = actions.onTakeBack
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier =
@@ -255,22 +283,18 @@ fun MomentPlayCard(
             MomentPlayKinds.POLL -> PollCard(item, mine, onAnswer, onTakeBack)
             MomentPlayKinds.COUNTDOWN -> CountdownCard(item)
             MomentPlayKinds.SLIDER -> SliderCard(item, onAnswer)
-            MomentPlayKinds.QUESTION -> QuestionCard(item, authorName, onWrite, onAnswers)
+            MomentPlayKinds.QUESTION -> QuestionCard(item, actions.authorName, actions.onWrite, actions.onAnswers)
             MomentPlayKinds.GUESS -> GuessCard(item, onAnswer)
-            MomentPlayKinds.BOARD -> BoardCard(item, onAnswer, onWrite)
+            MomentPlayKinds.BOARD -> BoardCard(item, onAnswer, actions.onWrite)
             MomentPlayKinds.QUOTE -> {
                 // A quote lifted from a page or a sign (CONTRACT 7g): drawn only.
                 Text("“${item.text.orEmpty()}”", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 item.source?.takeIf { it.isNotBlank() }?.let { PlayNote("— $it") }
             }
         }
-        if (item.kind == MomentPlayKinds.BOARD && item.mine != null && item.open == true && onTakeBack != null) {
-            PlayButton("Take my face off", "moments.play.takeBack", onTakeBack)
-        }
-        // A reader may take a slider's answer back while it is open (as a vote).
-        if (item.kind == MomentPlayKinds.SLIDER && item.mine != null && item.open == true && onTakeBack != null) {
-            PlayButton("Take my answer back", "moments.play.takeBack", onTakeBack)
-        }
+        // A reader may take a board place or a slider answer back while it is open (as a vote).
+        val takeBack = item.takeBackWords()
+        if (takeBack != null && onTakeBack != null) PlayButton(takeBack, "moments.play.takeBack", onTakeBack)
     }
 }
 

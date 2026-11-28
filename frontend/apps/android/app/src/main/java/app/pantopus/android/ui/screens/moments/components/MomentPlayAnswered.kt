@@ -86,36 +86,7 @@ internal fun SliderCard(
             Modifier
                 .fillMaxWidth()
                 .height(38.dp)
-                .semantics {
-                    contentDescription = item.question ?: "Slider"
-                    progressBarRangeInfo = ProgressBarRangeInfo(shown, 0f..1f)
-                    if (answers != null) {
-                        setProgress { to ->
-                            answers(MomentPlayAnswerBody(value = to.coerceIn(0f, 1f).toDouble()))
-                            true
-                        }
-                    }
-                }.testTag("moments.play.slider.track")
-                .then(
-                    if (answers == null) {
-                        Modifier
-                    } else {
-                        Modifier
-                            .pointerInput(item.id) {
-                                detectTapGestures {
-                                        at ->
-                                    answers(MomentPlayAnswerBody(value = (at.x / size.width).coerceIn(0f, 1f).toDouble()))
-                                }
-                            }.pointerInput(item.id) {
-                                detectHorizontalDragGestures(
-                                    onDragEnd = { moving?.let { answers(MomentPlayAnswerBody(value = it.toDouble())) } },
-                                ) { change, _ ->
-                                    change.consume()
-                                    moving = (change.position.x / size.width).coerceIn(0f, 1f)
-                                }
-                            }
-                    },
-                ),
+                .sliderInput(item, shown, answers) { moving = it },
     ) {
         val width = constraints.maxWidth.toFloat()
         val density = LocalDensity.current.density
@@ -162,6 +133,42 @@ internal fun SliderCard(
             "$count ${if (count == 1) "answer" else "answers"}${if (item.results?.average != null) " · the line is the average" else ""}",
         )
     }
+}
+
+/**
+ * The slider's line as people use it: TalkBack reads and sets the value, a tap answers where it lands, and a drag moves
+ * the mark ([onMove]) and answers where it is let go. Nothing answers when [answers] is null (closed, or the author).
+ */
+private fun Modifier.sliderInput(
+    item: MomentPlayItemDto,
+    shown: Float,
+    answers: ((MomentPlayAnswerBody) -> Unit)?,
+    onMove: (Float) -> Unit,
+): Modifier {
+    val spoken =
+        semantics {
+            contentDescription = item.question ?: "Slider"
+            progressBarRangeInfo = ProgressBarRangeInfo(shown, 0f..1f)
+            if (answers != null) {
+                setProgress { to ->
+                    answers(MomentPlayAnswerBody(value = to.coerceIn(0f, 1f).toDouble()))
+                    true
+                }
+            }
+        }.testTag("moments.play.slider.track")
+    if (answers == null) return spoken
+    var last: Float? = null
+    return spoken
+        .pointerInput(item.id) {
+            detectTapGestures { at -> answers(MomentPlayAnswerBody(value = (at.x / size.width).coerceIn(0f, 1f).toDouble())) }
+        }.pointerInput(item.id) {
+            detectHorizontalDragGestures(
+                onDragEnd = { last?.let { answers(MomentPlayAnswerBody(value = it.toDouble())) } },
+            ) { change, _ ->
+                change.consume()
+                last = (change.position.x / size.width).coerceIn(0f, 1f).also(onMove)
+            }
+        }
 }
 
 /** One face along the dial: the reader's own and their connections' initials; anyone else a plain face. */
