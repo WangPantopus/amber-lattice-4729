@@ -46,22 +46,6 @@ interface LivingApi {
         @Body body: LivingAtlasSearchBody,
     ): LivingAtlasSearchPage
 
-    /** CONTRACT 9c: the person's own followed places (private to them). */
-    @GET("api/reinvented/places")
-    suspend fun places(): LivingPlacesResponse
-
-    /** CONTRACT 9c: follow a place; the same place again answers the one kept. `409 PLACES_FULL`, `400 PLACE_INVALID`. */
-    @POST("api/reinvented/places")
-    suspend fun follow(
-        @Body body: LivingFollowBody,
-    ): LivingFollowAnswer
-
-    /** CONTRACT 9c: stop following it. */
-    @DELETE("api/reinvented/places/{id}")
-    suspend fun unfollow(
-        @Path("id") id: String,
-    )
-
     /** CONTRACT 9c: curiosity constellations within five miles; the phone's place in the body, never kept or logged. */
     @POST("api/reinvented/constellations")
     suspend fun constellations(
@@ -79,6 +63,38 @@ interface LivingApi {
     suspend fun poster(
         @Path("year") year: Int,
     ): LivingPosterEnvelope
+
+    /** CONTRACT 9g: the place sounds kept with Moments in the map's box, for its time. */
+    @GET("api/reinvented/sounds")
+    suspend fun sounds(
+        @Query("south") south: String,
+        @Query("west") west: String,
+        @Query("north") north: String,
+        @Query("east") east: String,
+        @Query("time") time: String,
+    ): LivingSoundsResponse
+}
+
+/**
+ * "Pulse, reinvented" phase 4: the person's own choices in the living world (places followed, the cabinet's and
+ * Echoes' choices, windows on circles) and what they read back. Switch on only.
+ */
+interface LivingChoicesApi {
+    /** CONTRACT 9c: the person's own followed places (private to them). */
+    @GET("api/reinvented/places")
+    suspend fun places(): LivingPlacesResponse
+
+    /** CONTRACT 9c: follow a place; the same place again answers the one kept. `409 PLACES_FULL`, `400 PLACE_INVALID`. */
+    @POST("api/reinvented/places")
+    suspend fun follow(
+        @Body body: LivingFollowBody,
+    ): LivingFollowAnswer
+
+    /** CONTRACT 9c: stop following it. */
+    @DELETE("api/reinvented/places/{id}")
+    suspend fun unfollow(
+        @Path("id") id: String,
+    )
 
     /** CONTRACT 9d: "Show my cabinet to people I know" (the person's own choice, on by default). */
     @PATCH("api/reinvented/settings")
@@ -114,16 +130,6 @@ interface LivingApi {
         @Path("id") circleId: String,
         @Body body: RequestBody,
     )
-
-    /** CONTRACT 9g: the place sounds kept with Moments in the map's box, for its time. */
-    @GET("api/reinvented/sounds")
-    suspend fun sounds(
-        @Query("south") south: String,
-        @Query("west") west: String,
-        @Query("north") north: String,
-        @Query("east") east: String,
-        @Query("time") time: String,
-    ): LivingSoundsResponse
 }
 
 /** A window a circle member shows for their home: lit when they shared today; never what, where or when. */
@@ -410,4 +416,8 @@ object LivingModule {
     @Provides
     @Singleton
     fun provideLivingApi(retrofit: Retrofit): LivingApi = retrofit.create(LivingApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideLivingChoicesApi(retrofit: Retrofit): LivingChoicesApi = retrofit.create(LivingChoicesApi::class.java)
 }

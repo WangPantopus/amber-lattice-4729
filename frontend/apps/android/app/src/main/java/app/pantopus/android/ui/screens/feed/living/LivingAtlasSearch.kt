@@ -3,7 +3,6 @@
 package app.pantopus.android.ui.screens.feed.living
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,9 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -29,16 +25,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,7 +48,6 @@ import app.pantopus.android.ui.screens.feed.reinvented.MomentPicture
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
-import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -160,69 +152,19 @@ internal fun LivingAtlasSearch(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.s1).padding(top = Spacing.s3),
         verticalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
-        val shape = RoundedCornerShape(Radii.lg)
-        BasicTextField(
-            value = text,
-            onValueChange = { text = it },
-            singleLine = true,
-            textStyle = TextStyle(color = PantopusColors.appText, fontSize = 15.sp),
-            cursorBrush = SolidColor(PantopusColors.appText),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions =
-                KeyboardActions(onSearch = {
-                    viewModel.search(text)
-                    focus.clearFocus()
-                }),
-            modifier = Modifier.fillMaxWidth().testTag("reinventedAtlas.search.field"),
-            decorationBox = { inner ->
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(42.dp)
-                            .background(PantopusColors.appSurface, shape)
-                            .border(1.dp, PantopusColors.appBorder, shape)
-                            .padding(start = Spacing.s3, end = Spacing.s1),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
-                ) {
-                    PantopusIconImage(
-                        icon = PantopusIcon.Search,
-                        contentDescription = null,
-                        size = 16.dp,
-                        tint = PantopusColors.appTextSecondary,
-                    )
-                    Box(Modifier.weight(1f)) {
-                        if (text.isEmpty()) {
-                            Text(
-                                "Search your Atlas: mushroom, sunset",
-                                fontSize = 15.sp,
-                                color = PantopusColors.appTextSecondary,
-                            )
-                        }
-                        inner()
-                    }
-                    if (state.q != null || text.isNotEmpty()) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier =
-                                Modifier
-                                    .size(32.dp)
-                                    .clickable(role = Role.Button) {
-                                        text = ""
-                                        viewModel.clear()
-                                    }.semantics { contentDescription = "Clear the search" }
-                                    .testTag("reinventedAtlas.search.clear"),
-                        ) {
-                            PantopusIconImage(
-                                icon = PantopusIcon.X,
-                                contentDescription = null,
-                                size = 15.dp,
-                                tint = PantopusColors.appTextSecondary,
-                            )
-                        }
-                    }
-                }
+        LivingSearchBox(
+            text = text,
+            look = ATLAS_LOOK,
+            busy = false,
+            showsClear = state.q != null || text.isNotEmpty(),
+            onText = { text = it },
+            onSearch = {
+                viewModel.search(text)
+                focus.clearFocus()
+            },
+            onClear = {
+                text = ""
+                viewModel.clear()
             },
         )
         val error = state.error
@@ -241,6 +183,15 @@ internal fun LivingAtlasSearch(
         }
     }
 }
+
+private val ATLAS_LOOK =
+    LivingSearchLook(
+        hint = "Search your Atlas: mushroom, sunset",
+        fieldTag = "reinventedAtlas.search.field",
+        clearTag = "reinventedAtlas.search.clear",
+        clearWords = "Clear the search",
+        pill = false,
+    )
 
 @Composable
 private fun Results(

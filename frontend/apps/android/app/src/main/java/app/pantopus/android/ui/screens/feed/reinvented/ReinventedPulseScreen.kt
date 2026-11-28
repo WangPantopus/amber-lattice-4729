@@ -332,7 +332,7 @@ private fun ReinventedPulseLayout(
 ) {
     val pulseMap by mapModel.state.collectAsStateWithLifecycle()
     // In My Atlas the map's pins are the person's own kept Moments.
-    val mapState = if (atlas.on) pulseMap.copy(items = atlas.pins, deck = atlas.pins) else pulseMap
+    val mapState = if (atlas.on) pulseMap.copy(items = atlas.pins, deck = atlas.pins, atlas = true) else pulseMap
     val flight by mapModel.flight.collectAsStateWithLifecycle()
     val camera = rememberReinventedCamera()
     // A card swiped to, or a place tapped in the list: the map glides there.
@@ -378,7 +378,6 @@ private fun ReinventedPulseLayout(
                             if (!atlas.on) mapModel.moved(box)
                         },
                         onOpen = open,
-                        beams = !atlas.on,
                     )
                 },
                 timeRow =

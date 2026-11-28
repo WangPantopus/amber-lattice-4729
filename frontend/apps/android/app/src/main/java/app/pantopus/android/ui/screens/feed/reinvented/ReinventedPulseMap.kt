@@ -90,8 +90,6 @@ internal fun ReinventedPulseMap(
     onMoved: (ReinventedBox) -> Unit,
     onOpen: (ReinventedMapItem) -> Unit,
     modifier: Modifier = Modifier,
-    /** Live beams (phase 4); never on My Atlas, the person's own private map. */
-    beams: Boolean = true,
 ) {
     val context = LocalContext.current
     var ready by remember { mutableStateOf(false) }
@@ -130,7 +128,8 @@ internal fun ReinventedPulseMap(
             contentPadding = PaddingValues(bottom = bottomPadding),
             onMapLoaded = { ready = true },
         )
-        if (ready && beams) LivingBeamsLayer(camera, state.time, light.night)
+        // Live beams (phase 4); never on My Atlas, the person's own private map.
+        if (ready && !state.atlas) LivingBeamsLayer(camera, state.time, light.night)
         if (ready) ReinventedMapPins(state.drawOrder, focused, camera, light, onOpen)
     }
 }

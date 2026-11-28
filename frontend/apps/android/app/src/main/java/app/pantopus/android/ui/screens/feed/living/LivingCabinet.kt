@@ -328,7 +328,7 @@ private fun PosterArt(poster: LivingPosterDto) {
                 Text("${it.big} ${it.words}", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.92f))
             }
         }
-        (1..12).chunked(4).forEach { row ->
+        MONTH_ROWS.forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 row.forEach { month ->
                     val moment = poster.months.firstOrNull { it.month == month }?.moment
@@ -359,6 +359,9 @@ private fun PosterArt(poster: LivingPosterDto) {
         Text("Pantopus", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.7f))
     }
 }
+
+/** The twelve months in rows of four. */
+private val MONTH_ROWS: List<List<Int>> = (1..12).chunked(4)
 
 private fun monthName(month: Int): String = java.time.Month.of(month).getDisplayName(TextStyle.SHORT, Locale.getDefault())
 

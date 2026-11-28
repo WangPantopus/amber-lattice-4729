@@ -62,6 +62,7 @@ import app.pantopus.android.ui.screens.feed.reinvented.ReinventedMapItem
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
+import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -294,72 +295,21 @@ internal fun LivingAskBar(
     ) {
         val shape = RoundedCornerShape(percent = 50)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-            BasicTextField(
-                value = text,
-                onValueChange = { text = it },
-                singleLine = true,
-                enabled = !state.asking,
-                textStyle = TextStyle(color = PantopusColors.appText, fontSize = 15.sp),
-                cursorBrush = SolidColor(PantopusColors.appText),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions =
-                    KeyboardActions(onSearch = {
-                        viewModel.ask(text)
-                        focus.clearFocus()
-                    }),
-                modifier = Modifier.weight(1f).testTag("reinventedPulse.ask.field"),
-                decorationBox = { inner ->
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .height(40.dp)
-                                .background(PantopusColors.appSurface, shape)
-                                .border(1.dp, PantopusColors.appBorder, shape)
-                                .padding(start = Spacing.s3, end = Spacing.s1),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
-                    ) {
-                        PantopusIconImage(
-                            icon = PantopusIcon.Search,
-                            contentDescription = null,
-                            size = 15.dp,
-                            tint = PantopusColors.appTextSecondary,
-                        )
-                        Box(Modifier.weight(1f)) {
-                            if (text.isEmpty()) {
-                                Text(
-                                    "Ask the map: cozy study cafe",
-                                    fontSize = 15.sp,
-                                    color = PantopusColors.appTextSecondary,
-                                )
-                            }
-                            inner()
-                        }
-                        when {
-                            state.asking -> CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                            state.lit != null || text.isNotEmpty() ->
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier =
-                                        Modifier
-                                            .size(32.dp)
-                                            .clickable(role = Role.Button) {
-                                                text = ""
-                                                viewModel.clear()
-                                            }.semantics { contentDescription = "Clear and show every pin" }
-                                            .testTag("reinventedPulse.ask.clear"),
-                                ) {
-                                    PantopusIconImage(
-                                        icon = PantopusIcon.X,
-                                        contentDescription = null,
-                                        size = 15.dp,
-                                        tint = PantopusColors.appTextSecondary,
-                                    )
-                                }
-                        }
-                    }
+            LivingSearchBox(
+                text = text,
+                look = ASK_LOOK,
+                busy = state.asking,
+                showsClear = state.lit != null || text.isNotEmpty(),
+                onText = { text = it },
+                onSearch = {
+                    viewModel.ask(text)
+                    focus.clearFocus()
                 },
+                onClear = {
+                    text = ""
+                    viewModel.clear()
+                },
+                modifier = Modifier.weight(1f),
             )
             ListenButton(state.listening, viewModel::toggleListen)
         }
@@ -377,6 +327,85 @@ internal fun LivingAskBar(
             )
         }
     }
+}
+
+private val ASK_LOOK =
+    LivingSearchLook(
+        hint = "Ask the map: cozy study cafe",
+        fieldTag = "reinventedPulse.ask.field",
+        clearTag = "reinventedPulse.ask.clear",
+        clearWords = "Clear and show every pin",
+        pill = true,
+    )
+
+/** How a search box looks and is named: its hint, its tags and the words for its clear button. */
+internal data class LivingSearchLook(
+    val hint: String,
+    val fieldTag: String,
+    val clearTag: String,
+    val clearWords: String,
+    /** A pill 40 dp high (the map's), else a rounded box 42 dp high (My Atlas's). */
+    val pill: Boolean,
+)
+
+/** A search box: the field with its icon and hint, and while it holds words (or a result), its clear button. */
+@Composable
+internal fun LivingSearchBox(
+    text: String,
+    look: LivingSearchLook,
+    busy: Boolean,
+    showsClear: Boolean,
+    onText: (String) -> Unit,
+    onSearch: () -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = if (look.pill) RoundedCornerShape(percent = 50) else RoundedCornerShape(Radii.lg)
+    BasicTextField(
+        value = text,
+        onValueChange = onText,
+        singleLine = true,
+        enabled = !busy,
+        textStyle = TextStyle(color = PantopusColors.appText, fontSize = 15.sp),
+        cursorBrush = SolidColor(PantopusColors.appText),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+        modifier = modifier.fillMaxWidth().testTag(look.fieldTag),
+        decorationBox = { inner ->
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(if (look.pill) 40.dp else 42.dp)
+                        .background(PantopusColors.appSurface, shape)
+                        .border(1.dp, PantopusColors.appBorder, shape)
+                        .padding(start = Spacing.s3, end = Spacing.s1),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+            ) {
+                PantopusIconImage(icon = PantopusIcon.Search, contentDescription = null, size = 15.dp, tint = PantopusColors.appTextSecondary)
+                Box(Modifier.weight(1f)) {
+                    if (text.isEmpty()) Text(look.hint, fontSize = 15.sp, color = PantopusColors.appTextSecondary)
+                    inner()
+                }
+                when {
+                    busy -> CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    showsClear ->
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier =
+                                Modifier
+                                    .size(32.dp)
+                                    .clickable(role = Role.Button, onClick = onClear)
+                                    .semantics { contentDescription = look.clearWords }
+                                    .testTag(look.clearTag),
+                        ) {
+                            PantopusIconImage(icon = PantopusIcon.X, contentDescription = null, size = 15.dp, tint = PantopusColors.appTextSecondary)
+                        }
+                }
+            }
+        },
+    )
 }
 
 /** Listen to the town (CONTRACT 9g), beside the bar. */

@@ -21,6 +21,7 @@ class LivingRepository
     @Inject
     constructor(
         private val api: LivingApi,
+        private val choices: LivingChoicesApi,
         private val feature: PulseReinventedFeature,
     ) {
         /** CONTRACT 9h: the live beams in the map's box. */
@@ -41,16 +42,16 @@ class LivingRepository
         ): NetworkResult<LivingAtlasSearchPage> = guarded { api.atlasSearch(LivingAtlasSearchBody(q, cursor)) }
 
         /** CONTRACT 9c: the person's followed places. */
-        suspend fun places(): NetworkResult<List<LivingFollowedPlaceDto>> = guarded { api.places().places }
+        suspend fun places(): NetworkResult<List<LivingFollowedPlaceDto>> = guarded { choices.places().places }
 
         /** CONTRACT 9c: follow a place, by the name and point the place picker answered. */
         suspend fun follow(
             label: String,
             latitude: Double,
             longitude: Double,
-        ): NetworkResult<LivingFollowAnswer> = guarded { api.follow(LivingFollowBody(label.take(MAX_LABEL), latitude, longitude)) }
+        ): NetworkResult<LivingFollowAnswer> = guarded { choices.follow(LivingFollowBody(label.take(MAX_LABEL), latitude, longitude)) }
 
-        suspend fun unfollow(id: String): NetworkResult<Unit> = guarded { api.unfollow(id) }
+        suspend fun unfollow(id: String): NetworkResult<Unit> = guarded { choices.unfollow(id) }
 
         /** CONTRACT 9c: constellations near the phone's place (in the body, never kept). */
         suspend fun constellations(
@@ -65,28 +66,28 @@ class LivingRepository
         suspend fun poster(year: Int): NetworkResult<LivingPosterDto> = guarded { api.poster(year).poster }
 
         /** CONTRACT 9d: "Show my cabinet to people I know". */
-        suspend fun showCabinet(on: Boolean): NetworkResult<Unit> = guarded { api.showCabinet(LivingCabinetChoice(on)) }
+        suspend fun showCabinet(on: Boolean): NetworkResult<Unit> = guarded { choices.showCabinet(LivingCabinetChoice(on)) }
 
         /** CONTRACT 9e: the person's Echoes choice (`off` when not set). */
-        suspend fun echoesChoice(): NetworkResult<String> = guarded { api.settings().echoes ?: ECHOES_OFF }
+        suspend fun echoesChoice(): NetworkResult<String> = guarded { choices.settings().echoes ?: ECHOES_OFF }
 
-        suspend fun setEchoes(choice: String): NetworkResult<Unit> = guarded { api.setEchoes(LivingEchoesChoice(choice)) }
+        suspend fun setEchoes(choice: String): NetworkResult<Unit> = guarded { choices.setEchoes(LivingEchoesChoice(choice)) }
 
         /** CONTRACT 9e: today's echoes and twins (only read while the person takes part). */
-        suspend fun echoes(): NetworkResult<LivingEchoesDto> = guarded { api.echoes() }
+        suspend fun echoes(): NetworkResult<LivingEchoesDto> = guarded { choices.echoes() }
 
         /** CONTRACT 9f: the windows of the reader's circles. */
-        suspend fun windows(): NetworkResult<List<LivingWindowDto>> = guarded { api.windows().windows }
+        suspend fun windows(): NetworkResult<List<LivingWindowDto>> = guarded { choices.windows().windows }
 
         /** CONTRACT 9f: the reader's own window on [circleId], or null when they show none. */
         suspend fun myWindow(circleId: String): NetworkResult<String?> =
-            guarded { api.circlesWindows().circles.firstOrNull { it.id == circleId }?.myWindow?.label }
+            guarded { choices.circlesWindows().circles.firstOrNull { it.id == circleId }?.myWindow?.label }
 
         /** CONTRACT 9f: show a window named [label] to the circle, or stop with null. */
         suspend fun setWindow(
             circleId: String,
             label: String?,
-        ): NetworkResult<Unit> = guarded { api.setWindow(circleId, windowBody(label)) }
+        ): NetworkResult<Unit> = guarded { choices.setWindow(circleId, windowBody(label)) }
 
         /** CONTRACT 9g: the place sounds in the map's box, for its time. */
         suspend fun sounds(
