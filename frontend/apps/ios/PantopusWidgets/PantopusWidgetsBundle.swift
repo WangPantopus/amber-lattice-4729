@@ -18,6 +18,5 @@ struct PantopusWidgetsBundle: WidgetBundle {
         TasksNearMeWidget()
         GigActivityWidget()
         PostingActivityWidget()
-        PostcardWidget()
     }
 }
