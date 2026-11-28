@@ -26,6 +26,8 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,7 +72,11 @@ import javax.inject.Inject
  * while the replies are open.
  */
 internal object MomentRepliesState {
-    val open = mutableStateOf(false)
+    /** The replies sheet is up. */
+    val sheet = mutableStateOf(false)
+
+    /** The viewer holds still: the sheet is up, or a pin is being dropped or one is open (8b). */
+    val open: State<Boolean> = derivedStateOf { sheet.value || MomentPinsState.holds }
 }
 
 data class MomentRepliesUi(
@@ -189,8 +195,8 @@ fun MomentRepliesChip(
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val shown = ui.shown.takeIf { ui.momentId == moment.id } ?: state.shown
     if (!shown && !mine) return
-    var open by MomentRepliesState.open
-    DisposableEffect(moment.id) { onDispose { MomentRepliesState.open.value = false } }
+    var open by MomentRepliesState.sheet
+    DisposableEffect(moment.id) { onDispose { MomentRepliesState.sheet.value = false } }
     val count = if (ui.momentId == moment.id && ui.replies.isNotEmpty()) ui.replies.size else state.count
     val words =
         when {
@@ -199,24 +205,37 @@ fun MomentRepliesChip(
             count == 1 -> "1 reply"
             else -> "$count replies"
         }
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        RepliesPill(words) {
+            viewModel.open(moment.id)
+            open = true
+        }
+        // Pins on the photo (8b), beside it.
+        MomentPinsControls(moment, shown)
+    }
+    if (open) {
+        RepliesSheet(moment, mine, shown, canReply = state.canReply && shown, ui = ui, viewModel = viewModel) { open = false }
+    }
+}
+
+@Composable
+private fun RepliesPill(
+    words: String,
+    onClick: () -> Unit,
+) {
     Text(
         text = words,
         color = Color.White,
         fontSize = 14.sp,
         fontWeight = FontWeight.SemiBold,
         modifier =
-            modifier
+            Modifier
                 .clip(RoundedCornerShape(percent = 50))
                 .background(PantopusColors.momentCaptionPill)
-                .clickable(role = Role.Button) {
-                    viewModel.open(moment.id)
-                    open = true
-                }.padding(horizontal = 12.dp, vertical = 7.dp)
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 7.dp)
                 .testTag("moments.viewer.replies"),
     )
-    if (open) {
-        RepliesSheet(moment, mine, shown, canReply = state.canReply && shown, ui = ui, viewModel = viewModel) { open = false }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

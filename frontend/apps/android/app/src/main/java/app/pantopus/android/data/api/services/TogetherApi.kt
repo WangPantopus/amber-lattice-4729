@@ -1,6 +1,9 @@
 package app.pantopus.android.data.api.services
 
 import app.pantopus.android.data.api.models.moments.MomentEnvelope
+import app.pantopus.android.data.api.models.reinvented.MomentPinEnvelope
+import app.pantopus.android.data.api.models.reinvented.MomentPinReactionBody
+import app.pantopus.android.data.api.models.reinvented.MomentPinsResponse
 import app.pantopus.android.data.api.models.reinvented.MomentRepliesResponse
 import app.pantopus.android.data.api.models.reinvented.MomentRepliesShownBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyBody
@@ -49,4 +52,17 @@ interface TogetherApi {
         @Path("id") id: String,
         @Body body: MomentRepliesShownBody,
     ): MomentEnvelope
+
+    /** CONTRACT 8b: the pins this reader may see on the picture. */
+    @GET("api/reinvented/moments/{id}/pins")
+    suspend fun pins(
+        @Path("id") id: String,
+    ): MomentPinsResponse
+
+    /** CONTRACT 8b: a reaction pin (JSON). Remove and report are the replies' own (a pin's id is its reply's). */
+    @POST("api/reinvented/moments/{id}/pins")
+    suspend fun dropReaction(
+        @Path("id") id: String,
+        @Body body: MomentPinReactionBody,
+    ): MomentPinEnvelope
 }

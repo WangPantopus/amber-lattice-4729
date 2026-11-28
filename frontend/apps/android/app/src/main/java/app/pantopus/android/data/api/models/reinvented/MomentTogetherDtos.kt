@@ -56,3 +56,46 @@ data class MomentReplyReportBody(
 data class MomentRepliesShownBody(
     val shown: Boolean,
 )
+
+/**
+ * A pin on a Moment's picture (CONTRACT 8b): a reaction, a voice bubble or a cutout on a spot ([x], [y]: shares of the
+ * picture, as stamps). A pin is a reply: its id is the reply's, and remove and report are the replies' own.
+ */
+@JsonClass(generateAdapter = true)
+data class MomentPinDto(
+    val id: String,
+    val kind: String = "reaction",
+    val x: Double = 0.5,
+    val y: Double = 0.5,
+    val emoji: String? = null,
+    val signal: String? = null,
+    @Json(name = "audio_url") val audioUrl: String? = null,
+    @Json(name = "duration_ms") val durationMs: Long? = null,
+    @Json(name = "image_url") val imageUrl: String? = null,
+    val text: String? = null,
+    /** A cutout whose picture check hasn't passed yet: seen by its sender only, drawn as "Checking…". */
+    val checking: Boolean = false,
+    val author: MomentAuthorDto? = null,
+    val mine: Boolean = false,
+    @Json(name = "can_remove") val canRemove: Boolean = false,
+)
+
+/** `GET /api/reinvented/moments/:id/pins`: every pin this reader may see. */
+@JsonClass(generateAdapter = true)
+data class MomentPinsResponse(
+    @Lossy val pins: List<MomentPinDto> = emptyList(),
+)
+
+@JsonClass(generateAdapter = true)
+data class MomentPinEnvelope(
+    val pin: MomentPinDto,
+)
+
+/** A reaction pin: one of the five signals on a spot. */
+@JsonClass(generateAdapter = true)
+data class MomentPinReactionBody(
+    val kind: String = "reaction",
+    val x: Double,
+    val y: Double,
+    val signal: String,
+)

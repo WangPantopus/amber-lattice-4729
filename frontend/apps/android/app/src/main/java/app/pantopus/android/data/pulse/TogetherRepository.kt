@@ -1,6 +1,8 @@
 package app.pantopus.android.data.pulse
 
 import app.pantopus.android.data.api.models.moments.MomentDto
+import app.pantopus.android.data.api.models.reinvented.MomentPinDto
+import app.pantopus.android.data.api.models.reinvented.MomentPinReactionBody
 import app.pantopus.android.data.api.models.reinvented.MomentRepliesResponse
 import app.pantopus.android.data.api.models.reinvented.MomentRepliesShownBody
 import app.pantopus.android.data.api.models.reinvented.MomentReplyBody
@@ -46,6 +48,17 @@ class TogetherRepository
             momentId: String,
             shown: Boolean,
         ): NetworkResult<MomentDto> = guarded { api.setShown(momentId, MomentRepliesShownBody(shown)).moment }
+
+        /** CONTRACT 8b: the pins on a Moment's picture. */
+        suspend fun pins(momentId: String): NetworkResult<List<MomentPinDto>> = guarded { api.pins(momentId).pins }
+
+        /** CONTRACT 8b: one of the five signals dropped on a spot of the picture. */
+        suspend fun dropReaction(
+            momentId: String,
+            x: Double,
+            y: Double,
+            signal: String,
+        ): NetworkResult<MomentPinDto> = guarded { api.dropReaction(momentId, MomentPinReactionBody(x = x, y = y, signal = signal)).pin }
 
         private suspend fun <T> guarded(call: suspend () -> T): NetworkResult<T> {
             val answer = safeApiCall { call() }
