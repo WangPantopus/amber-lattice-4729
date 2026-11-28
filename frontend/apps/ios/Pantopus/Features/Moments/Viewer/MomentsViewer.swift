@@ -265,7 +265,8 @@ extension MomentsViewer {
                     isMine: model.isMine,
                     place: model.metaPlace,
                     times: model.metaTimes,
-                    isVideo: model.moment?.kind == .video,
+                    // A loop plays without sound, so it has no sound button (CONTRACT 7j).
+                    isVideo: model.moment?.kind == .video && model.moment?.loopSpan == nil,
                     muted: model.muted,
                     compact: isReplying,
                     onPlace: placeAction,

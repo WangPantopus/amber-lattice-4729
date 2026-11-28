@@ -68,6 +68,7 @@ extension MomentsComposerModel {
             body.series = seriesId.map { MomentSeriesDTO(id: $0, index: index + 1, count: ready.count) }
             // The Studio's step deck (CONTRACT 7g): one step per Moment, never a video posted in parts; nil otherwise.
             body.deck = seriesId == nil ? takeDeckStep() : nil
+            body.loop = seriesId == nil ? takeLoop() : nil
             do {
                 try await made.append(MomentsAPI.send(createEndpoint(body, part: index), as: MomentEnvelope.self).moment)
             } catch let failure as MomentsFailure {
