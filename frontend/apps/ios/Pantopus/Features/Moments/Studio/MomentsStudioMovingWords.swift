@@ -101,9 +101,16 @@ struct MomentMovingWordsView: View {
     }
 
     /// The letters; with `phase` they rise one after another (the wave), and only the first `shown` are seen.
+    /// A line wraps, centred, inside 86% of the picture's width at the words' size, as the web draws them: between
+    /// words, and inside a word only when the word alone is longer than that.
+    private var widest: CGFloat {
+        0.86 * 402 * unit * CGFloat(item.scale)
+    }
+
     private func letters(_ text: String, phase: TimeInterval, shown: Int) -> some View {
-        HStack(spacing: 0) {
-            ForEach(Array(text.enumerated()), id: \.offset) { index, letter in
+        let characters = Array(text)
+        return MomentWordsLayout(spaces: characters.map { $0 == " " }, widest: widest) {
+            ForEach(Array(characters.enumerated()), id: \.offset) { index, letter in
                 Text(String(letter))
                     .font(font)
                     .foregroundStyle(color)
@@ -113,6 +120,85 @@ struct MomentMovingWordsView: View {
         }
         .shadow(color: .black.opacity(color == .white || item.color == "#FFFFFF" ? 0.45 : 0.2), radius: 2, y: 1)
         .fixedSize()
+    }
+}
+
+/// Letters in rows no wider than `widest`, each row centred: a row breaks at a space (dropped at the row's ends), and
+/// inside a word only when that word alone is wider than a row.
+struct MomentWordsLayout: Layout {
+    /// One per letter: true for a space.
+    let spaces: [Bool]
+    let widest: CGFloat
+
+    private struct Row {
+        var letters: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    func sizeThatFits(proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
+        let rows = rows(subviews)
+        return CGSize(width: rows.map(\.width).max() ?? 0, height: rows.reduce(0) { $0 + $1.height })
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
+        var top = bounds.minY
+        var placed = Set<Int>()
+        for row in rows(subviews) {
+            var left = bounds.midX - row.width / 2
+            for index in row.letters {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: left, y: top), anchor: .topLeading, proposal: .unspecified)
+                left += size.width
+                placed.insert(index)
+            }
+            top += row.height
+        }
+        // A space dropped at a row's end is still placed (out of sight, with no size).
+        for index in subviews.indices where !placed.contains(index) {
+            subviews[index].place(at: CGPoint(x: bounds.minX, y: bounds.minY), anchor: .topLeading, proposal: .zero)
+        }
+    }
+
+    private func rows(_ subviews: Subviews) -> [Row] {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let isSpace = { (index: Int) in index < spaces.count && spaces[index] }
+        var rows: [Row] = []
+        var row = Row()
+        func put(_ index: Int) {
+            row.letters.append(index)
+            row.width += sizes[index].width
+            row.height = max(row.height, sizes[index].height)
+        }
+        func close() {
+            while let last = row.letters.last, isSpace(last) {
+                row.letters.removeLast()
+                row.width -= sizes[last].width
+            }
+            if !row.letters.isEmpty { rows.append(row) }
+            row = Row()
+        }
+        var index = 0
+        while index < sizes.count {
+            if isSpace(index) {
+                if !row.letters.isEmpty { put(index) }
+                index += 1
+                continue
+            }
+            var end = index
+            while end < sizes.count, !isSpace(end) {
+                end += 1
+            }
+            let word = sizes[index..<end].reduce(0) { $0 + $1.width }
+            if !row.letters.isEmpty, row.width + word > widest { close() }
+            for letter in index..<end {
+                if word > widest, !row.letters.isEmpty, row.width + sizes[letter].width > widest { close() }
+                put(letter)
+            }
+            index = end
+        }
+        close()
+        return rows
     }
 }
 
