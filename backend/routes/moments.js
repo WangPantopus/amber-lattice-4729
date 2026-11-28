@@ -419,7 +419,7 @@ router.post('/', createLimiter, async (req, res) => {
         throw store.fail(400, 'MOMENT_INVALID', loopError.message);
       }
     }
-    // A picture shown as its author composed it (CONTRACT 10c): whole, and a video's placement on the canvas.
+    // A picture shown as its author composed it (CONTRACT 10c): whole, its backdrop, and a video's placement on the canvas.
     const composed = studio ? require('../services/pulse/composed').parse(req.body, { kind: body.kind }) : {};
     // Retake (CONTRACT 8e): start one (`retake.title`) or add a frame (`retake_of`); checked below, once the place is known.
     const retakeAsk = studio ? retake.parse(req.body) : null;
