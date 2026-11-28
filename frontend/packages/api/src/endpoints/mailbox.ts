@@ -747,9 +747,16 @@ export async function uploadHolidayCardMedia(kind: 'photo' | 'voice', file: File
  * `own` the uploader's upload, `sent` the sender's own card, `piece` the card they received.
  */
 export async function getHolidayCardMediaBlob(
-  where: { own: string } | { sent: string; fileId: string } | { piece: string; fileId: string },
+  where: { own: string } | { sent: string; fileId: string } | { piece: string; fileId: string } | { claim: string; token: string; fileId: string },
   signal?: AbortSignal,
 ): Promise<Blob> {
+  if ('claim' in where) {
+    const response = await apiClient.get<Blob>(
+      `/api/mailbox/claim/${encodeURIComponent(where.claim)}/card-media/${encodeURIComponent(where.fileId)}`,
+      { responseType: 'blob', signal, headers: { 'X-Card-Claim-Token': where.token } },
+    );
+    return response.data;
+  }
   const url = 'own' in where
     ? `/api/mailbox/cards/media/${encodeURIComponent(where.own)}`
     : 'sent' in where
@@ -938,6 +945,7 @@ export interface HolidayCardPreview {
     picture?: string } | null;
   /** By email: the page its link opens (the address masked, as on that page). */
   link_page: { sender_name: string; sender_verified: boolean; sealed: boolean; sent_to: string; sent_on: string; by_link?: boolean;
+    guest_open?: boolean;
     /** The card's front as the page shows it; null when it's sealed until Christmas. */
     front?: CardLinkFront | null } | null;
   /** By email, set to go at your 7 a.m. or on Christmas morning: when (null: as it's sealed). */

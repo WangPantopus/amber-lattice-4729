@@ -32,7 +32,7 @@ const notificationService = require('../services/notificationService');
 const emailService = require('../services/emailService');
 const smsService = require('../services/smsService');
 const { isBlocked } = require('../services/blockService');
-const { skipForLaunchCut, areLaunchFeaturesEnabled } = require('../utils/featureFlags');
+const { skipForLaunchCut, areLaunchFeaturesEnabled, cardGuestOpenEnabled } = require('../utils/featureFlags');
 // Other people are named the way neighbors see them: by their Local Profile (a business by the business).
 const { loadChatPeople } = require('../services/chatPeople');
 const { localDisplayNames } = require('../utils/identityProfiles');
@@ -412,12 +412,27 @@ function closedEscrowReason(mail) {
   return null;
 }
 
+// Whether a waiting (escrow) Christmas card is still sealed: honors sealed_until once Christmas morning passes.
+function isCardEscrowSealed(mail, now = new Date()) {
+  const card = mail?.mail_extracted?.card;
+  if (!card) return false;
+  if (card.sealed_until) return holidayCards.isSealed(mail, now);
+  return card.arrival === 'sealed_christmas';
+}
+
+// A real recipient name to write on a guest envelope (never a masked email address).
+function guestEnvelopeName(card) {
+  const raw = typeof card?.to_name === 'string' ? card.to_name.trim() : '';
+  if (!raw || raw.includes('@') || raw.includes('***')) return null;
+  return raw;
+}
+
 // The front of a card on its link's page (GET /claim/:mailId) and on Look it over's picture of that page: the stock
 // picture the sender picked, as the public /cards/<slug> page draws it, from the season's list alone (never the
 // stored caption). Nothing of the note, the signature, the sender's own photo or voice. A card sealed until Christmas
 // shows no front (null), and neither does a picture that isn't on the list.
-function cardLinkFront(card) {
-  if (!card || card.arrival === 'sealed_christmas') return null;
+function cardLinkFront(card, sealed = card?.arrival === 'sealed_christmas') {
+  if (!card || sealed) return null;
   const design = holidayCards.designById(card.design);
   if (!design) return null;
   return { design: design.id, caption: design.caption, paper: design.paper, table: design.table || null, mood: design.mood || null };
@@ -2875,7 +2890,8 @@ async function cardLook(senderId, checked, now) {
   if (toEmail || byLink) {
     const { senderName, senderVerified } = await claimPagePerson(senderId, senderDisplay);
     linkPage = { sender_name: senderName, sender_verified: senderVerified, sealed, sent_to: byLink ? '' : maskContact(toEmail),
-      sent_on: now.toISOString(), front: cardLinkFront({ ...card, arrival }), ...(byLink ? { by_link: true } : {}) };
+      sent_on: now.toISOString(), front: cardLinkFront({ ...card, arrival }, sealed), ...(byLink ? { by_link: true } : {}),
+      guest_open: cardTableOn() && cardGuestOpenEnabled() };
   }
   return {
     piece: {
@@ -5108,6 +5124,7 @@ router.get('/claim/:mailId', async (req, res) => {
     }
     // A Christmas card shows its front (the stock picture, unless it's sealed until Christmas), never its note.
     const card = holidayCards.isCard(mail) ? mail.mail_extracted.card : null;
+    const cardSealed = card ? isCardEscrowSealed(mail) : false;
     if (card) previewText = null;
     // A travelling card (card_travel): its envelope's postmarks and how far it came, towns and dates only (Part 7).
     const travel = card?.travel ? await cardTravel.linkView(mail.id).catch(() => null) : null;
@@ -5117,11 +5134,12 @@ router.get('/claim/:mailId', async (req, res) => {
     if (card) {
       const webServer = !req.get('origin') && /^(node|undici)\b/i.test(String(req.get('user-agent') || ''));
       if (pageSeenDue(`${mail.id}:${webServer ? 'server' : 'reader'}`)) {
-        void recordFunnelEvent('card_page_seen', { meta: { via: cardVia(mail), sealed: card.arrival === 'sealed_christmas',
+        void recordFunnelEvent('card_page_seen', { meta: { via: cardVia(mail), sealed: cardSealed,
           ...(webServer ? { web_server: true } : {}) } });
       }
     }
 
+    const toName = card ? guestEnvelopeName(card) : null;
     return res.json({
       mail: {
         id: mail.id,
@@ -5133,7 +5151,12 @@ router.get('/claim/:mailId', async (req, res) => {
         mailType: mail.mail_type || mail.type || null,
         outcomeDescription,
         card: card ? { holiday: card.holiday || holidayCards.SEASON.holiday, year: card.year || holidayCards.SEASON.year,
-          sealed: card.arrival === 'sealed_christmas', front: cardLinkFront(card), ...(card.by_link ? { by_link: true } : {}),
+          sealed: cardSealed,
+          ...(cardSealed && card.sealed_until ? { sealed_until: card.sealed_until } : {}),
+          front: cardLinkFront(card, cardSealed),
+          guest_open: cardTableOn() && cardGuestOpenEnabled(),
+          ...(toName ? { to_name: toName } : {}),
+          ...(card.by_link ? { by_link: true } : {}),
           ...(travel ? { travel } : {}) } : null,
         // The address or number to sign in with, masked as in the sender's expiry notice. A card by link went to none.
         sentTo: card?.by_link ? '' : maskContact(mail.escrow_recipient_contact || ''),
@@ -5144,6 +5167,144 @@ router.get('/claim/:mailId', async (req, res) => {
   } catch (err) {
     logger.error('Escrow claim preview error', { error: err.message, mailId: req.params.mailId });
     return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Guest opening of a Christmas card from its link or email (explicit human action on /open/:mailId, never on GET so
+// link-preview bots and email scanners never read private notes or media). Ordinary letters, bills and sealed cards
+// stay gated. Strictly rate-limited per IP and per card.
+const CARD_GUEST_OPEN_LIMIT = { error: 'Too many tries right now. Try again in a few minutes.', code: 'CARD_GUEST_LIMIT' };
+const cardGuestOpenNetworkLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, keyGenerator: clientIpKey, message: CARD_GUEST_OPEN_LIMIT });
+const cardGuestOpenCardLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30, keyGenerator: (req) => `guest-open:${req.params.mailId}`, message: CARD_GUEST_OPEN_LIMIT });
+const cardGuestOpenSchema = Joi.object({
+  token: Joi.string().max(256).required(),
+});
+
+/**
+ * POST /api/mailbox/claim/:mailId/open  { token }
+ * Public (no sign-in): opens a pending Christmas card on the browser table so the recipient can break the wax seal and
+ * read the card before deciding to save it or write back. Never opens ordinary letters or bills, and never reads
+ * MailObject for a card still sealed until Christmas morning. Photos are always returned covered until tapped.
+ */
+router.post('/claim/:mailId/open', cardGuestOpenNetworkLimiter, validate(cardGuestOpenSchema), cardGuestOpenCardLimiter, async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  res.set('Referrer-Policy', 'no-referrer');
+  if (!cardTableOn() || !cardGuestOpenEnabled()) {
+    return res.status(404).json({ error: 'Opening without signing in is not available right now.', code: 'CARD_GUEST_OFF' });
+  }
+  try {
+    const { mailId } = req.params;
+    const { token } = req.body;
+    if (!UUID_REGEX.test(mailId)) return sendClaimLinkInvalid(res);
+
+    const { data: mail, error } = await supabaseAdmin
+      .from('Mail')
+      .select('id, sender_user_id, sender_entity_id, sender_business_name, sender_display, object_id, escrow_recipient_contact, escrow_status, escrow_claim_token, escrow_claim_token_hash, escrow_expires_at, created_at, mail_extracted')
+      .eq('id', mailId)
+      .maybeSingle();
+    if (error) {
+      logger.error('Guest card open read failed', { error: error.message, mailId });
+      return res.status(500).json({ error: 'Couldn’t open this card just now. Try again in a moment.' });
+    }
+    if (!mail || !claimTokenMatches(mail, token)) return sendClaimLinkInvalid(res);
+
+    const closed = closedEscrowReason(mail);
+    if (closed) return res.status(closed.status).json({ error: closed.error, code: closed.code, card: closed.card });
+
+    if (!holidayCards.isCard(mail)) {
+      return res.status(403).json({ error: 'Sign in to read this letter.', code: 'CARD_GUEST_NOT_CARD' });
+    }
+
+    const now = new Date();
+    const card = mail.mail_extracted.card;
+    const sealed = isCardEscrowSealed(mail, now);
+    const sender = sentAsBusiness(mail)
+      ? { ...claimPageSender(mail), senderKind: 'business' }
+      : { ...(await claimPagePerson(mail.sender_user_id, mail.sender_display)), senderKind: 'person' };
+    const travel = card?.travel ? await cardTravel.linkView(mail.id).catch(() => null) : null;
+    const journeyId = card?.travel?.journey || null;
+    const toName = guestEnvelopeName(card);
+
+    if (sealed) {
+      // Never read MailObject or expose the chosen picture while sealed until Christmas morning.
+      return res.json({
+        senderName: sender.senderName,
+        toName,
+        mailedOn: mail.created_at,
+        note: '',
+        card: {
+          design: '',
+          number: null,
+          caption: null,
+          paper: '#f7f0e2',
+          table: null,
+          mood: null,
+          year: card.year || holidayCards.SEASON.year,
+          sealed: true,
+          sealed_until: card.sealed_until || null,
+          verse: null,
+          signature: null,
+          photo: null,
+          voice: null,
+          ...(travel ? { travel } : {}),
+        },
+        journey: null,
+        by_link: Boolean(card.by_link),
+      });
+    }
+
+    const { payload } = mail.object_id ? await mailObjects.readPayload(mail.object_id) : { payload: null };
+    const note = typeof payload?.body?.content === 'string' ? payload.body.content : '';
+    const view = holidayCards.cardView({ ...mail, object_payload: payload, card_photo_covered: true }, now);
+    logger.info('Card guest opened', { mailId: mail.id, via: cardVia(mail) });
+
+    return res.json({
+      senderName: sender.senderName,
+      toName,
+      mailedOn: mail.created_at,
+      note,
+      card: {
+        ...view,
+        sealed: false,
+        ...(travel ? { travel } : {}),
+      },
+      journey: journeyId,
+      by_link: Boolean(card.by_link),
+    });
+  } catch (err) {
+    logger.error('Guest card open error', { error: err.message, mailId: req.params.mailId });
+    return res.status(503).json({ error: 'Couldn’t open this card just now. Try again in a moment.' });
+  }
+});
+
+/**
+ * GET /api/mailbox/claim/:mailId/card-media/:fileId
+ * Public (token in X-Card-Claim-Token header, never in URL): streams a pending, unsealed Christmas card's photo,
+ * Live Photo clip or voice greeting for a guest viewing the card on the browser table. Private and no-store.
+ */
+router.get('/claim/:mailId/card-media/:fileId', cardGuestOpenNetworkLimiter, cardGuestOpenCardLimiter, async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  res.set('Referrer-Policy', 'no-referrer');
+  if (!cardTableOn() || !cardGuestOpenEnabled() || !cardMedia.memoriesOn()) return cardMedia.notFound(res);
+  try {
+    const { mailId, fileId } = req.params;
+    const token = String(req.get('x-card-claim-token') || '');
+    if (!UUID_REGEX.test(mailId) || !token) return cardMedia.notFound(res);
+
+    const { data: mail, error } = await supabaseAdmin
+      .from('Mail')
+      .select('id, escrow_status, escrow_claim_token, escrow_claim_token_hash, escrow_expires_at, mail_extracted')
+      .eq('id', mailId)
+      .maybeSingle();
+    if (error || !mail || !claimTokenMatches(mail, token)) return cardMedia.notFound(res);
+    if (closedEscrowReason(mail) || !holidayCards.isCard(mail) || isCardEscrowSealed(mail)) return cardMedia.notFound(res);
+
+    const file = await cardMedia.boundFile(fileId, mail.id);
+    return file ? await cardMedia.send(req, res, file) : cardMedia.notFound(res);
+  } catch (err) {
+    logger.error('Guest card media error', { error: err.message, mailId: req.params.mailId });
+    if (!res.headersSent) return res.status(503).json({ error: 'Couldn’t open it just now. Try again in a moment.', code: 'CARD_MEDIA_UNAVAILABLE' });
+    return undefined;
   }
 });
 
@@ -5199,7 +5360,12 @@ router.post('/claim/:mailId/code', mailCodeNetworkLimiter, validate(mailCodeSche
 
     const card = holidayCards.isCard(mail);
     const { senderName } = sentAsBusiness(mail) ? claimPageSender(mail) : await claimPagePerson(mail.sender_user_id, mail.sender_display);
-    const sent = await mailClaimCode.sendCode({ address, senderName, card, mailId, req });
+    // Email-addressed pieces include a return link that pre-fills the code on /open/:mailId (never auto-submitting on
+    // GET), helping mobile in-app browser users who lose their tab when checking email.
+    const returnLinkBase = !holidayCards.isByLink(mail) && req.body.token
+      ? cardEmail.escrowClaimLink(mail.id, req.body.token)
+      : null;
+    const sent = await mailClaimCode.sendCode({ address, senderName, card, mailId, req, returnLinkBase });
     if (sent !== 'sent') {
       return res.status(503).json({
         error: sent === 'unavailable' ? 'Email can’t be sent just now. Try again in a few minutes.' : 'Couldn’t send your code. Try again in a moment.',
