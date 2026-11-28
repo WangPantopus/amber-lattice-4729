@@ -8,6 +8,7 @@ import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanPinDto
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Moshi
 
 /*
  * "Pulse, reinvented" phase 1, the one Pulse tab (CONTRACT 6, `~/pantopus-moments/pulse-reinvented/coord/CONTRACT.md`,
@@ -44,7 +45,17 @@ data class ReinventedListItemDto(
     val moment: MomentDto? = null,
     val post: FeedPost? = null,
     val why: String? = null,
-)
+    /** The post's phase 3 keys (CONTRACT 8f), read beside today's post from the same answer. */
+    @Transient val travel: PulseTravelDto? = null,
+) : ReadsBeside {
+    override fun beside(
+        raw: Any?,
+        moshi: Moshi,
+    ): Any {
+        val post = (raw as? Map<*, *>)?.get("post") ?: return this
+        return copy(travel = moshi.adapter(PulseTravelDto::class.java).fromJsonValue(post))
+    }
+}
 
 /** `GET /api/reinvented/list` (CONTRACT 6a): one page, by reach, chip and cursor. */
 @JsonClass(generateAdapter = true)
