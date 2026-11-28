@@ -146,6 +146,7 @@ import app.pantopus.android.ui.components.ToastHost
 import app.pantopus.android.ui.components.keepsKeyboard
 import app.pantopus.android.ui.screens.feed.pulseReportReasons
 import app.pantopus.android.ui.screens.feed.reinvented.after.MomentKeepThis
+import app.pantopus.android.ui.screens.feed.reinvented.after.MomentPinsOverlay
 import app.pantopus.android.ui.screens.feed.reinvented.after.MomentPlanMenuItem
 import app.pantopus.android.ui.screens.feed.reinvented.after.MomentPlanOffer
 import app.pantopus.android.ui.screens.feed.reinvented.after.MomentRepliesChip
@@ -578,7 +579,15 @@ fun MomentsViewerScreen(
                             enabled = !typing && !reacting && !turning && !leaving,
                             place = picturePlace,
                             onHold = { holding = it },
-                            onTap = { x, width -> if (x < width / 3f) viewModel.previous() else viewModel.next() },
+                            onTap = { x, width ->
+                                if (studio && MomentRepliesState.open.value) {
+                                    Unit
+                                } else if (x < width / 3f) {
+                                    viewModel.previous()
+                                } else {
+                                    viewModel.next()
+                                }
+                            },
                             onPage = { x ->
                                 settling?.cancel()
                                 handling = true
@@ -657,6 +666,7 @@ fun MomentsViewerScreen(
                                 onFailed = viewModel::next,
                             )
                             if (studio) MomentStampsOverlay(load.moment)
+                            if (studio) MomentPinsOverlay(load.moment)
                         }
                     ViewerLoad.Loading -> Unit
                     ViewerLoad.Ended ->
