@@ -121,47 +121,20 @@ private fun FrontBackScreen(
 ) {
     BackHandler(onBack = onClose)
     val context = LocalContext.current
-    val owner = LocalLifecycleOwner.current
     val density = LocalDensity.current
     val standIn = MomentStandIn.active
     var frontBig by remember { mutableStateOf(false) }
     var shooting by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf<String?>(null) }
-    var cameras by remember { mutableStateOf<BothCameras?>(null) }
     val bigView = remember { PreviewView(context).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE } }
     val smallView = remember { PreviewView(context).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE } }
     val scope = rememberCoroutineScope()
-    if (!standIn) {
-        DisposableEffect(owner) {
-            var provider: androidx.camera.lifecycle.ProcessCameraProvider? = null
-            val job =
-                scope.launch {
-                    provider = cameraProvider(context)
-                    cameras = provider?.let { BothCameras.bind(it, owner) }
-                    if (cameras == null) failed = "This phone can't use both cameras at once."
-                }
-            onDispose {
-                job.cancel()
-                provider?.unbindAll()
-            }
-        }
-        DisposableEffect(cameras, frontBig) {
-            cameras?.let {
-                it.backPreview.setSurfaceProvider((if (frontBig) smallView else bigView).surfaceProvider)
-                it.frontPreview.setSurfaceProvider((if (frontBig) bigView else smallView).surfaceProvider)
-            }
-            onDispose { }
-        }
-    }
+    val cameras = if (standIn) null else rememberBothCameras(frontBig, bigView, smallView) { failed = it }
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black).testTag("moments.studio.frontBack")) {
         val screenWidth = constraints.maxWidth.toFloat()
         val screenHeight = constraints.maxHeight.toFloat()
         val safeTop = WindowInsets.statusBars.getTop(density).toFloat()
-        val inset =
-            with(FrontBackInset) {
-                val d = density.density
-                RectF(LEFT * d, safeTop + TOP * d, (LEFT + WIDTH) * d, safeTop + (TOP + HEIGHT) * d)
-            }
+        val inset = frontBackInset(safeTop, density.density)
         val stands =
             remember(standIn, screenWidth, screenHeight) {
                 if (standIn) {
@@ -198,8 +171,7 @@ private fun FrontBackScreen(
                 val shot = stands ?: cameras?.shoot(context)
                 val file =
                     shot?.let { (back, front) ->
-                        val big = if (frontBig) front else back
-                        val small = if (frontBig) back else front
+                        val (big, small) = if (frontBig) front to back else back to front
                         saveFrontBack(context, composeFrontBack(big, small, screenWidth, screenHeight, inset, density.density))
                     }
                 shooting = false
@@ -208,6 +180,50 @@ private fun FrontBackScreen(
         }
     }
 }
+
+/** Both cameras bound while this is on screen (let go when it leaves), their previews in [bigView] and [smallView]. */
+@Composable
+private fun rememberBothCameras(
+    frontBig: Boolean,
+    bigView: PreviewView,
+    smallView: PreviewView,
+    onFailed: (String) -> Unit,
+): BothCameras? {
+    val context = LocalContext.current
+    val owner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
+    var cameras by remember { mutableStateOf<BothCameras?>(null) }
+    DisposableEffect(owner) {
+        var provider: androidx.camera.lifecycle.ProcessCameraProvider? = null
+        val job =
+            scope.launch {
+                provider = cameraProvider(context)
+                cameras = provider?.let { BothCameras.bind(it, owner) }
+                if (cameras == null) onFailed("This phone can't use both cameras at once.")
+            }
+        onDispose {
+            job.cancel()
+            provider?.unbindAll()
+        }
+    }
+    DisposableEffect(cameras, frontBig) {
+        cameras?.let {
+            it.backPreview.setSurfaceProvider((if (frontBig) smallView else bigView).surfaceProvider)
+            it.frontPreview.setSurfaceProvider((if (frontBig) bigView else smallView).surfaceProvider)
+        }
+        onDispose { }
+    }
+    return cameras
+}
+
+/** The small picture's place on the screen, px, under a status bar [safeTop] px high. */
+private fun frontBackInset(
+    safeTop: Float,
+    density: Float,
+): RectF =
+    with(FrontBackInset) {
+        RectF(LEFT * density, safeTop + TOP * density, (LEFT + WIDTH) * density, safeTop + (TOP + HEIGHT) * density)
+    }
 
 /** One camera's picture: its live preview, or a stand-in picture on a debug emulator build. */
 @Composable
