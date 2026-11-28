@@ -67,7 +67,8 @@ struct ReinventedEchoes: View {
     @State private var saving = false
 
     var body: some View {
-        Group {
+        // A stack, not a Group: with nothing in it yet a Group never appears, so its task would never read.
+        VStack(alignment: .leading, spacing: 0) {
             if let choice {
                 VStack(alignment: .leading, spacing: Spacing.s2) {
                     Toggle(isOn: Binding(get: { choice != "off" }, set: { set($0 ? "on" : "off") })) {
