@@ -154,7 +154,7 @@ struct MomentQuestionCard: View {
     let item: MomentPlayItem
     @State private var text = ""
     @State private var problem: String?
-    @State private var sending = false
+    @State private var writing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
@@ -172,35 +172,30 @@ struct MomentQuestionCard: View {
             } else if let mine = item.mine?.text {
                 MomentPlayNote(words: "You said: \(mine). Only \(moment.author.shortName) sees answers.")
             } else if item.open {
-                HStack(spacing: Spacing.s2) {
-                    TextField("", text: $text, prompt: Text("Your answer").foregroundColor(Color.white.opacity(0.55)))
-                        .font(.system(size: 14.5))
-                        .foregroundStyle(.white)
-                        .tint(.white)
-                        .padding(.horizontal, 12)
-                        .frame(height: 38)
-                        .typesInFieldOnTap()
-                        .background(Capsule().fill(Color.white.opacity(0.14)))
-                        .onChange(of: text) { _, typed in if typed.count > 200 { text = String(typed.prefix(200)) } }
-                        .accessibilityIdentifier("moments.play.question.field")
-                    Button("Send") { Task { await send() } }
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                        .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .accessibilityIdentifier("moments.play.question.send")
-                }
+                // The answer is written in a sheet of its own, above the keyboard.
+                MomentPlayWriteField(words: text, placeholder: "Your answer", id: "moments.play.question.field") { writing = true }
+                    .onChange(of: writing) { _, open in MomentPlayStore.shared.writingOn = open ? moment.id : nil }
+                    .sheet(isPresented: $writing) {
+                        MomentPlayWriteSheet(
+                            title: item.prompt ?? "",
+                            placeholder: "Your answer",
+                            limit: 200,
+                            text: $text,
+                            sendWords: "Send",
+                            send: send
+                        ) { writing = false }
+                    }
                 MomentPlayNote(words: "Only \(moment.author.shortName) sees answers.")
             }
             if let problem { MomentPlayNote(words: problem) }
         }
     }
 
-    private func send() async {
-        sending = true
-        defer { sending = false }
+    private func send() async -> String? {
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         problem = await MomentPlayStore.shared.answer(MomentPlayAnswerBody(text: words), item: item, on: moment.id)
         if problem == nil { text = "" }
+        return problem
     }
 }
 

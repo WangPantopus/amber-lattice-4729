@@ -5,7 +5,18 @@
 
 import { del, get, put } from '@pantopus/api/client';
 
-export type PlayKind = 'poll' | 'slider' | 'board' | 'question' | 'guess' | 'countdown' | 'quote' | 'fog' | 'swatch' | 'before_after';
+export type PlayKind =
+  | 'poll'
+  | 'slider'
+  | 'board'
+  | 'question'
+  | 'guess'
+  | 'countdown'
+  | 'quote'
+  | 'fog'
+  | 'swatch'
+  | 'before_after'
+  | 'moving_words';
 
 export interface PlayPerson {
   id: string;
@@ -89,7 +100,9 @@ export type PlayItem =
   | (Base & { kind: 'fog'; mine: null; results: null })
   | (Base & { kind: 'swatch'; colors: string[]; box: { x: number; y: number; w: number; h: number }; mine: null; results: null })
   // The picture is the two photos side by side (left before, right after); readers drag a curtain between them.
-  | (Base & { kind: 'before_after'; before?: string | null; after?: string | null; mine: null; results: null });
+  | (Base & { kind: 'before_after'; before?: string | null; after?: string | null; mine: null; results: null })
+  // §7k: the author's words over a photo, in a lettering, moving; drawn only.
+  | (Base & { kind: 'moving_words'; text: string; lettering: string; motion: string; color?: string; mine: null; results: null });
 
 export type PlayAnswer =
   | { choice: number }
@@ -111,7 +124,7 @@ export function takeBackPlay(postId: string, item: string) {
 
 /** The items a reader may answer now: open, and not yet answered. */
 export function waitingItems(play: readonly PlayItem[] | undefined | null): PlayItem[] {
-  return (play || []).filter((p) => p.open && !['countdown', 'quote', 'fog', 'swatch', 'before_after'].includes(p.kind) && !p.mine);
+  return (play || []).filter((p) => p.open && !['countdown', 'quote', 'fog', 'swatch', 'before_after', 'moving_words'].includes(p.kind) && !p.mine);
 }
 
 export function isPlayList(value: unknown): value is PlayItem[] {

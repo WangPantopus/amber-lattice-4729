@@ -102,6 +102,8 @@ public struct MomentCreateBody: Encodable, Sendable, Hashable {
     public var dots: [MomentDotDTO]?
     /// The Studio's step deck (CONTRACT 7g): this step, the deck's id and how many; left out otherwise.
     public var deck: MomentDeckBody?
+    /// The Studio's loop (CONTRACT 7j): the whole file is the loop, `bounce` says it plays back too; left out otherwise.
+    public var loop: MomentLoopBody?
 
     private enum CodingKeys: String, CodingKey {
         case kind, hours, audience, caption, text, background, location, altitude, series, pin
@@ -109,7 +111,7 @@ public struct MomentCreateBody: Encodable, Sendable, Hashable {
         case takenHere = "taken_here"
         case showWeather = "show_weather"
         case postAs = "post_as"
-        case stamps, elevation, guess, explore, play, mentions, dots, deck
+        case stamps, elevation, guess, explore, play, mentions, dots, deck, loop
         case showArea = "show_area"
         case clientRequestId = "client_request_id"
         case placeKey = "place_key"

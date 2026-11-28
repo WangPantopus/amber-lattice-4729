@@ -6,9 +6,10 @@
  * post-curator-moment.js.
  *
  * The folder holds one sub-folder per account, named by the account's email or username, with that person's photos
- * (JPEG, HEIC, PNG) and videos (MOV, MP4; HEVC is fine). `prepare` reads where and when each was taken from the file
- * itself, makes the upload copies the apps would make (.seedmap-ready/), a small preview to write the caption from
- * (.seedmap-previews/), and writes seedmap-manifest.json. Fill in each line's `caption`, `post_as` (moment | pulse |
+ * (JPEG, HEIC, PNG) and videos (MOV, MP4; HEVC is fine). `prepare` reads where, when and how high each was taken from
+ * the file itself (the height shows on the Moment as "Show height" would, while `moment_heights` is on), makes the
+ * upload copies the apps would make (.seedmap-ready/), a small preview to write the caption from (.seedmap-previews/),
+ * and writes seedmap-manifest.json. Fill in each line's `caption`, `post_as` (moment | pulse |
  * both), `pulse_kind` (local_update | recommendation | neighborhood_win | visitor_guide: the kinds that stay up),
  * `moment_days` (1 to 60) and, for waves, `not_before` (a date). `run` is a dry run until --post: it prints what each
  * line would post and why any line is left out. Running again never posts the same file for the same account twice.
@@ -207,6 +208,9 @@ async function prepare() {
         latitude: placed ? Number(capture.latitude.toFixed(6)) : null,
         longitude: placed ? Number(capture.longitude.toFixed(6)) : null,
         taken_at: takenTime(capture),
+        // How high the file says it was taken (metres above sea level) and how fast it moved, for the Moment's height.
+        altitude_m: placed && Number.isFinite(capture.altitudeM) ? Number(capture.altitudeM.toFixed(1)) : null,
+        speed_mps: placed && Number.isFinite(capture.speedMps) ? Number(capture.speedMps.toFixed(1)) : null,
         place_label: null,
         town: null,
         seconds: null,
@@ -239,7 +243,7 @@ async function prepare() {
         line.problems.push(`the file could not be read (${error.message.split('\n')[0]})`);
       }
       lines.push(line);
-      console.log(`${lineName(line)}: ${line.kind}${placed ? ` at ${line.place_label}` : ''}${line.taken_at ? `, taken ${line.taken_at}` : ''}${line.problems.length ? ` (left out: ${line.problems.join('; ')})` : ''}`);
+      console.log(`${lineName(line)}: ${line.kind}${placed ? ` at ${line.place_label}` : ''}${line.taken_at ? `, taken ${line.taken_at}` : ''}${line.altitude_m != null ? `, ${line.altitude_m} m up` : ''}${line.problems.length ? ` (left out: ${line.problems.join('; ')})` : ''}`);
     }
     if (who.problem) console.log(`${dir.name}: account left out: ${who.problem}`);
   }
@@ -437,6 +441,7 @@ async function postMoment(line, who, days, resume = false) {
     throw new Error(`taken at the account's home (within ${momentPlace.AT_HOME_M} m)`);
   }
   const labels = await momentPlace.labelsAt(line.latitude, line.longitude);
+  const altitude = await momentHeight(line, user);
   const row = store.newMomentRow({
     userId: user.id,
     accountType: user.accountType,
@@ -452,6 +457,7 @@ async function postMoment(line, who, days, resume = false) {
     labels,
     labelKind: momentPlace.labelKind(labels, labels.place_label),
     takenAt: store.takenAtShown(line.taken_at),
+    altitude,
   });
   // Already handled for the connections' push (momentNotify.notifyConnections leaves a Moment with `notify` alone).
   row.post_metadata.moment.notify = NOTIFY_SKIPPED;
@@ -514,10 +520,25 @@ async function postPulse(line, who, kind) {
   return { id: postId, tag: tag.name };
 }
 
-function describeMoment(line, plan) {
+/**
+ * The height a Moment keeps from its file, as the route keeps one an app sent with "Show height" on: only while heights
+ * are on for the account (the `moment_heights` flag), at an exact pin away from home, rounded to 10 ft.
+ */
+async function momentHeight(line, user) {
+  if (line.altitude_m == null) return null;
+  const shown = store.shownAltitude({ meters: line.altitude_m, speed_mps: line.speed_mps ?? null });
+  return shown && (await store.heightsOn(user)) ? shown : null;
+}
+
+async function describeMoment(line, plan, user) {
   const taken = store.takenAtShown(line.taken_at);
   const day = taken ? ` (reads "Taken ${new Date(taken).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' })}")` : '';
-  return `Moment for ${plan.days} day${plan.days === 1 ? '' : 's'} at ${line.place_label}${day}`;
+  const height = await momentHeight(line, user);
+  // A manifest prepared before heights were read has no altitude_m at all: preparing again reads it, keeping captions.
+  const shows = height ? `, ${height.altitude_ft.toLocaleString('en-US')} ft up`
+    : !('altitude_m' in line) ? ', no height (run prepare again to read it from the file)'
+      : line.altitude_m == null ? ', no height in the file' : ', no height (heights are off for this account)';
+  return `Moment for ${plan.days} day${plan.days === 1 ? '' : 's'} at ${line.place_label}${day}${shows}`;
 }
 
 async function run() {
@@ -540,7 +561,7 @@ async function run() {
     const pulse = pulsePlan(line, pExisting);
     const parts = [];
     const half = (name, plan, words) => (!plan.skip ? words : plan.done ? `${name} ${plan.skip}` : `${name} left out: ${plan.skip}`);
-    if (moment) parts.push(half('Moment', moment, moment.skip ? '' : describeMoment(line, moment)));
+    if (moment) parts.push(half('Moment', moment, moment.skip ? '' : await describeMoment(line, moment, who.user)));
     if (pulse) parts.push(half('Pulse', pulse, `Pulse ${pulse.kind} pinned where it was taken ("Photo taken here")`));
     const postsSomething = (moment && !moment.skip) || (pulse && !pulse.skip) || pulse?.needsMedia;
     const allDone = [moment, pulse].filter(Boolean).every((half) => half.done);

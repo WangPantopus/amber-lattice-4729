@@ -1,8 +1,8 @@
 // Where and when a photo or video was taken, read from the file's own metadata: the same reading the apps' composers
 // make before an upload (frontend/apps/web/src/components/feed/composer/mediaLocation.ts, ported to Node for
 // scripts/seedmap.js). JPEG: the EXIF block. HEIC: the EXIF item its `meta` box points at. MOV and MP4: `©xyz`, `loci`
-// or Apple's location key, and the movie's creation time. Answers { latitude, longitude, capturedAt, localTime } with any
-// of them missing (null), never throws for a file it can't read.
+// or Apple's location key, and the movie's creation time. Answers { latitude, longitude, altitudeM, speedMps, capturedAt,
+// localTime } with any of them missing (null), never throws for a file it can't read.
 
 const fs = require('fs');
 
@@ -68,6 +68,14 @@ function readExif(buf) {
   const gps = gpsPointer == null ? new Map() : directory(u32(gpsPointer + 8));
   const point = located(degrees(fractions(gps.get(2)), text(gps.get(1)) === 'S'),
     degrees(fractions(gps.get(4)), text(gps.get(3)) === 'W'));
+  // How high, from sea level (GPSAltitudeRef 1: below it), and how fast the phone moved, in its GPSSpeedRef unit (km/h
+  // unless M or N), which tells a flight from a mountain: what the apps send for "Show height" on an album photo
+  // (Android's MediaHeightExtractor).
+  const rise = fractions(gps.get(6))?.[0];
+  const altitudeM = Number.isFinite(rise) ? (gps.get(5) != null && buf[gps.get(5) + 8] === 1 ? -rise : rise) : null;
+  const speed = fractions(gps.get(13))?.[0];
+  const perUnit = { M: 0.44704, N: 0.514444 }[text(gps.get(12))] || 1 / 3.6;
+  const speedMps = Number.isFinite(speed) && speed >= 0 ? speed * perUnit : null;
   // The GPS block's own time is UTC; else the camera's time in its recorded offset (no offset: read as UTC).
   const gpsDay = text(gps.get(29)).replace(/:/g, '-');
   const gpsClock = fractions(gps.get(7));
@@ -86,7 +94,7 @@ function readExif(buf) {
     if (original && /^[+-]\d\d:\d\d$/.test(offset)) capturedAt = isoTime(`${clock}${offset}`);
     else if (/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(clock)) localTime = clock;
   }
-  return { ...(point || {}), capturedAt, localTime };
+  return { ...(point || {}), ...(point && altitudeM != null ? { altitudeM, speedMps } : {}), capturedAt, localTime };
 }
 
 function readJpeg(buf) {
@@ -182,9 +190,11 @@ function readHeic(fd, box) {
   return readExif(item.subarray(start));
 }
 
+/** "+45.3539-121.9963+364.308/": the point, and the height in metres when the string carries one. */
 function iso6709(value) {
-  const match = /^\s*([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)/.exec(value || '');
-  return match ? located(Number(match[1]), Number(match[2])) : null;
+  const match = /^\s*([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)?/.exec(value || '');
+  const point = match ? located(Number(match[1]), Number(match[2])) : null;
+  return point && match[3] != null ? { ...point, altitudeM: Number(match[3]), speedMps: null } : point;
 }
 
 /** Apple's `keys` + `ilst` metadata: the value at a key's number. */
@@ -233,9 +243,9 @@ function readMovie(buf) {
   return { ...(point || {}), capturedAt };
 }
 
-/** { latitude, longitude, capturedAt } read from the file at `filePath` (nulls where it says nothing). */
+/** { latitude, longitude, altitudeM, speedMps, capturedAt, localTime } read from `filePath` (nulls where it says nothing). */
 function readCapture(filePath) {
-  const none = { latitude: null, longitude: null, capturedAt: null, localTime: null };
+  const none = { latitude: null, longitude: null, altitudeM: null, speedMps: null, capturedAt: null, localTime: null };
   let fd;
   try {
     fd = fs.openSync(filePath, 'r');

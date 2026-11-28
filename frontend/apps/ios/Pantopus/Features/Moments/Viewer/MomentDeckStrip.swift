@@ -18,7 +18,13 @@ import SwiftUI
 final class MomentDeckSaves {
     static let shared = MomentDeckSaves()
 
-    var saved: Set<String> = []
+    /// The decks saved, per account (another account signed in on this phone starts with none of them).
+    private var savedBy: [String: Set<String>] = [:]
+    var saved: Set<String> {
+        get { savedBy[MomentsComposerModel.account ?? ""] ?? [] }
+        set { savedBy[MomentsComposerModel.account ?? ""] = newValue }
+    }
+
     var sending: String?
     /// The Moment whose "Open" opened the reader's field guide over the viewer.
     var guideFrom: String?
@@ -62,8 +68,7 @@ struct MomentDeckStrip: View {
             .accessibilityIdentifier("moments.viewer.deck")
             .sheet(isPresented: Binding(get: { saves.guideFrom == moment.id }, set: { if !$0 { saves.guideFrom = nil } })) {
                 MomentsFieldGuide { saves.guideFrom = nil }
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
+                    .overViewerSheet()
             }
         }
     }

@@ -55,7 +55,7 @@ extension MomentsViewer {
                 showsMenu = true
             })
         }
-        if model.moment?.kind == .video {
+        if model.moment?.kind == .video, model.moment?.loopSpan == nil {
             let label = model.muted ? "Sound off. Turn on" : "Sound on. Mute"
             items.append(MomentsStripButtons.Item(id: "moments.viewer.sound", icon: model.muted ? .volumeX : .volume2, label: label) {
                 model.muted.toggle()
@@ -169,7 +169,7 @@ extension MomentsViewer {
                     isMine: model.isMine,
                     place: model.metaPlace,
                     times: model.metaTimes,
-                    isVideo: model.moment?.kind == .video,
+                    isVideo: model.moment?.kind == .video && model.moment?.loopSpan == nil,
                     muted: model.muted,
                     compact: isReplying,
                     showsButtons: headerButtons,

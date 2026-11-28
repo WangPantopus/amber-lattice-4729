@@ -5,6 +5,7 @@
 // the same part of the picture everywhere. A reader answers; the author sees the results instead of the controls.
 // Taps and keys inside an item stay in it: they never step or pause the viewer.
 
+import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, X } from 'lucide-react';
@@ -15,6 +16,9 @@ import { isSwitchedOff, useRereadSwitch } from '../switchOff';
 import { isRouteGone, markServerBehind } from '../serverBehind';
 import { answerPlay, readAnswers, readPlay, removeAnswer, takeBackPlay, waitingItems, type PlayAnswer, type PlayFace, type PlayItem } from './playTypes';
 import './play.css';
+
+// Moving words (§7k) and their letterings load only where such an item is drawn.
+const MovingWords = dynamic(() => import('./MovingWords'), { ssr: false, loading: () => null });
 
 type PlayMoment = Moment & { play?: PlayItem[] };
 
@@ -201,6 +205,8 @@ export function Card({
       );
     case 'swatch':
       return <Swatch item={item} trying={null} onTry={() => {}} />;
+    case 'moving_words':
+      return <MovingWords item={item} />;
     case 'before_after':
       // Only the Studio draws it as a card (readers get the curtain over the whole picture instead).
       return (
