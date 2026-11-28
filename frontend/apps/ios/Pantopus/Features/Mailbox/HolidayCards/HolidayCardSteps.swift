@@ -83,6 +83,13 @@ struct HolidayCardToStep: View {
         }
     }
 
+    /// Under the search: with `improved` they can read it before joining (Wave 1).
+    private var joinLine: String {
+        viewModel.improved
+            ? "They don’t need Pantopus. They can open and read it right away."
+            : "They don’t need Pantopus yet. They join to open it."
+    }
+
     /// One card can go to a list (digital stamps on): people and addresses are added, then "Continue".
     private var many: Bool {
         viewModel.maxRecipients > 1
@@ -117,11 +124,7 @@ struct HolidayCardToStep: View {
             results
             if LaunchFeatures.cardTable {
                 // Plan 11.6: the invitation is already here. With `improved` they can read it before joining (Wave 1).
-                Text(
-                    viewModel.improved
-                        ? "They don’t need Pantopus. They can open and read it right away."
-                        : "They don’t need Pantopus yet. They join to open it."
-                )
+                Text(joinLine)
                     .font(.system(size: 14))
                     .foregroundStyle(HolidayCardDesk.muted(scheme))
                     .multilineTextAlignment(.center)
