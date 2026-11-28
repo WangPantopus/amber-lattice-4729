@@ -2010,11 +2010,12 @@ const cardMediaNeedsStamp = (words = MEDIA_NEEDS_STAMP_WORDS, more = null) =>
 // for `cards` of which `free` can still go free and `paid` need a bought stamp.
 function mediaNeedsStampWords({ limit = 0, cards = 1, free = 0, paid = 1 } = {}) {
   if (limit <= 0) return MEDIA_NEEDS_STAMP_WORDS;
-  if (cards <= 1) return `You’ve used your ${limit} free photo or voice cards. Adding more uses a bought stamp.`;
+  const freeOnes = `${limit} free photo or voice ${limit === 1 ? 'card' : 'cards'}`;
+  if (cards <= 1) return `You’ve used your ${freeOnes}. Adding more uses a bought stamp.`;
   const stamps = `${paid} bought ${paid === 1 ? 'stamp' : 'stamps'}`;
   return free > 0
-    ? `Your first ${limit} photo or voice cards are free. These ${cards} cards need ${stamps}.`
-    : `You’ve used your ${limit} free photo or voice cards. These ${cards} cards need ${stamps}.`;
+    ? `Your first ${limit === 1 ? 'photo or voice card is' : `${limit} photo or voice cards are`} free. These ${cards} cards need ${stamps}.`
+    : `You’ve used your ${freeOnes}. These ${cards} cards need ${stamps}.`;
 }
 
 /**
