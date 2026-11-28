@@ -62,6 +62,14 @@ import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Spacing
 import kotlinx.coroutines.launch
+import javax.inject.Inject
+import kotlinx.coroutines.flow.StateFlow
+import dagger.hilt.android.lifecycle.HiltViewModel
+import app.pantopus.android.data.pulse.PulseReinventedFeature
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.ViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.runtime.LaunchedEffect
 
 /**
  * Over the Studio's camera (switch on only; the caller draws it only then): "Front and back" where this phone can run
@@ -74,10 +82,15 @@ internal fun StudioFrontBackMode(
     onOpen: () -> Unit,
     onClose: () -> Unit,
     onCaptured: (MomentMediaFile) -> Unit,
+    switch: FrontBackSwitchViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val offered by produceState(false) { value = offersBothCameras(context) }
-    if (!offered) return
+    // The switch read off (the app re-reads it when it comes back to the front): the mode closes and today's camera
+    // takes the screen again, and the pill is gone.
+    val on by switch.on.collectAsStateWithLifecycle()
+    LaunchedEffect(on, open) { if (!on && open) onClose() }
+    if (!offered || !on) return
     if (open) {
         FrontBackScreen(onClose = onClose, onCaptured = onCaptured)
     } else {
@@ -112,6 +125,16 @@ private fun FrontBackEntry(
         Text("Front and back", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     }
 }
+
+/** The person's switch as the app last read it, so the mode can give way to today's camera at once. */
+@HiltViewModel
+class FrontBackSwitchViewModel
+    @Inject
+    constructor(
+        feature: PulseReinventedFeature,
+    ) : ViewModel() {
+        val on: StateFlow<Boolean> = feature.on
+    }
 
 /** The mode: the big picture filling the screen, the small one at the top left (tap it to swap), the shutter, the X. */
 @Composable
