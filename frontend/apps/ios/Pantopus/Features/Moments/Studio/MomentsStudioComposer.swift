@@ -112,7 +112,10 @@ struct MomentsStudioComposer: View {
             } else {
                 Group {
                     switch model.mode {
-                    case .camera: MomentsCameraScreen(model: model, onClose: close)
+                    case .camera:
+                        MomentsCameraScreen(model: model, onClose: close)
+                            // Front and back together (row 7): a mode the person picks; today's camera is left as it is.
+                            .overlay { MomentsStudioFrontBackEntry(model: model) }
                     case .library: MomentsLibraryScreen(model: model, onClose: close)
                     case .text: MomentsTextCardEditor(model: model, onClose: close)
                     }

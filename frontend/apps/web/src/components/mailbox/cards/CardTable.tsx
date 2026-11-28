@@ -365,7 +365,7 @@ export default function CardTable({
     (stage.querySelector('[data-el="lFront"]') as HTMLElement).style.visibility = 'hidden';
     const pictures = isLetter
       ? [...ALL_ART.map((src) => src.replace(/\/(env-|wax-gold)([^/]*)$/, (_, a: string, b: string) => (a === 'env-' ? `/cream-env-${b}` : `/wax-red${b}`))), stampSrc]
-      : [...ALL_ART, cardTrimmedPicture(card.design), stampSrc];
+      : [...ALL_ART, ...(card.design ? [cardTrimmedPicture(card.design)] : []), stampSrc];
     const ready = pictures.map((src) => {
       const image = new Image();
       image.src = src;
@@ -689,17 +689,23 @@ export default function CardTable({
                   <LetterSheet className={`${styles.side} ${styles.sideBack}`} title={`Welcome to ${fromName}`}><SidePieces side="Back" /></LetterSheet>
                 </>
               ) : (<>
-              <PaperFront
-                design={card.design}
-                caption={card.caption}
-                paper={card.paper}
-                year={card.year}
-                mailedOn={mailedOn}
-                className={styles.side}
-                style={{ position: 'absolute', inset: 0, aspectRatio: 'auto' }}
-              >
-                <SidePieces side="Front" />
-              </PaperFront>
+              {card.design ? (
+                <PaperFront
+                  design={card.design}
+                  caption={card.caption}
+                  paper={card.paper}
+                  year={card.year}
+                  mailedOn={mailedOn}
+                  className={styles.side}
+                  style={{ position: 'absolute', inset: 0, aspectRatio: 'auto' }}
+                >
+                  <SidePieces side="Front" />
+                </PaperFront>
+              ) : (
+                <div className={styles.side} style={{ position: 'absolute', inset: 0, background: card.paper }}>
+                  <SidePieces side="Front" />
+                </div>
+              )}
               <PaperBack
                 number={card.number}
                 paper={card.paper}

@@ -155,9 +155,11 @@ import app.pantopus.android.ui.screens.feed.reinvented.after.keepWaits
 import app.pantopus.android.ui.screens.moments.components.MomentBeforeAfterLayer
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.MomentCurtainGrab
+import app.pantopus.android.ui.screens.moments.components.MomentDotsLayer
 import app.pantopus.android.ui.screens.moments.components.MomentFace
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
 import app.pantopus.android.ui.screens.moments.components.MomentImages
+import app.pantopus.android.ui.screens.moments.components.MomentLayerHold
 import app.pantopus.android.ui.screens.moments.components.MomentMetaPills
 import app.pantopus.android.ui.screens.moments.components.MomentSignal
 import app.pantopus.android.ui.screens.moments.components.MomentSignalBadge
@@ -274,7 +276,7 @@ fun MomentsViewerScreen(
         touched || menuOpen || reporting || confirmingBlock || seenByOpen || confirmingDelete || away || covered ||
             editing != null || updatedNote || guessing || (studio && moment?.guessWaits(mine) == true) ||
             (studio && moment?.keepWaits(mine) == true) ||
-            (studio && MomentRepliesState.open.value)
+            (studio && MomentRepliesState.open.value) || (studio && MomentLayerHold.holds(moment?.id))
     // Play picks up where it was; a Moment whose time ran out during the pause says so instead.
     LaunchedEffect(paused) { if (!paused) viewModel.endedOnScreen() }
     val view = LocalView.current
@@ -669,6 +671,7 @@ fun MomentsViewerScreen(
                             )
                             if (studio) MomentBeforeAfterLayer(load.moment)
                             if (studio) MomentStampsOverlay(load.moment)
+                            if (studio) MomentDotsLayer(load.moment, mine)
                             if (studio) MomentPinsOverlay(load.moment)
                         }
                     ViewerLoad.Loading -> Unit

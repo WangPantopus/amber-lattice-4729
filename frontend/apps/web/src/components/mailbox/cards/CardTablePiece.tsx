@@ -8,7 +8,7 @@
 // its sheet over the table.
 // ============================================================
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
@@ -207,6 +207,31 @@ export default function CardTablePiece({
   // Open the next card (mail-cards-experience Part 4): only when the Mailbox list opened this card and handed it the
   // others waiting. It replaces this card's page, so ✕ and Back still go to the Mailbox.
   const [waiting] = useState(() => nextCards(piece.id));
+
+  // Hand off from the guest card table: when a recipient tapped Write back, Pass it on, or Send a card before joining,
+  // carry them straight into that action once their card lands in the mailbox, and strip `?intent=` from the URL.
+  const intentHandled = useRef(false);
+  useEffect(() => {
+    if (intentHandled.current || typeof window === 'undefined' || card.sealed || blockedNow) return;
+    const url = new URL(window.location.href);
+    const intent = url.searchParams.get('intent');
+    if (!intent) return;
+    const consume = () => {
+      intentHandled.current = true;
+      url.searchParams.delete('intent');
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+    };
+    if (intent === 'reply' && !replyPiece && exchange?.can_reply) {
+      consume();
+      setWriting(true);
+    } else if (intent === 'pass-on' && travel?.can_pass_on && travel.next_place) {
+      consume();
+      setPassingOn(true);
+    } else if (intent === 'send-back' && senderId && theirs.isSuccess) {
+      consume();
+      router.push(sendOneBackPath({ userId: senderId, name: from }));
+    }
+  }, [blockedNow, card.sealed, exchange?.can_reply, from, replyPiece, router, senderId, theirs.isSuccess, travel?.can_pass_on, travel?.next_place]);
   const nextCard = waiting.length ? {
     count: waiting.length,
     onOpen: () => {

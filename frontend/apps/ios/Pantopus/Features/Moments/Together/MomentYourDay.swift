@@ -81,6 +81,12 @@ final class YourDayModel {
         Calendar.current.component(.hour, from: Date()) >= opensAtHour
     }
 
+    /// Today's card was shared or put away ("Not today"): tonight's reminder isn't needed.
+    var decidedToday: Bool {
+        guard let account = MomentsComposerModel.account else { return false }
+        return defaults.string(forKey: Self.decidedKey(account)) == Self.dateKey(Date())
+    }
+
     private static func decidedKey(_ account: String) -> String {
         "pantopus.yourDay.decided.\(account)"
     }
@@ -91,6 +97,7 @@ final class YourDayModel {
             phase = .hidden
             return
         }
+        await YourDayReminder.arm()
         if case .posting = phase { return }
         let now = Date()
         let key = Self.dateKey(now)
