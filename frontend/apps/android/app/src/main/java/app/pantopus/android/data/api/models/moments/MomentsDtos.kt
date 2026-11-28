@@ -424,6 +424,10 @@ data class CreateMomentBody(
     val dots: List<MomentDotDto>? = null,
     /** CONTRACT 9h: the compass at the camera's own shot, switch on only (`data/living/LivingCompass.kt`); null left out. */
     val heading: MomentHeadingBody? = null,
+    /** The Studio's whole photo (CONTRACT 10c): `true` only when it shows whole; left out otherwise. */
+    val whole: Boolean? = null,
+    /** The Studio's whole photo (CONTRACT 10c): the two colours it sits on, with `whole` only; left out otherwise. */
+    val backdrop: MomentBackdropDto? = null,
 )
 
 /**
