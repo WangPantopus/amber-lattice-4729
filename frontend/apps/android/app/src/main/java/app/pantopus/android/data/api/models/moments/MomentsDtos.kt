@@ -181,6 +181,8 @@ data class MomentDto(
     val replies: MomentRepliesStateDto? = null,
     /** "Pulse, reinvented" (CONTRACT 7h): the people its caption mentions, for a reader whose switch is on; else null. */
     val mentions: List<MomentAuthorDto>? = null,
+    /** "Pulse, reinvented" (CONTRACT 7b, 7g): its playable items, for a reader whose switch is on; else null. */
+    val play: List<MomentPlayItemDto>? = null,
 )
 
 /**
@@ -409,6 +411,8 @@ data class CreateMomentBody(
     val explore: Boolean? = null,
     /** The Studio's mentions (CONTRACT 7h): up to five person ids named in the caption; left out otherwise. */
     val mentions: List<String>? = null,
+    /** The Studio's playable items (CONTRACT 7b, 7g: before and after so far); left out otherwise. */
+    val play: List<MomentPlayItemDto>? = null,
 )
 
 /**

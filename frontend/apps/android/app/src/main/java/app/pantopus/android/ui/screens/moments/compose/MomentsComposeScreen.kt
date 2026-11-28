@@ -112,6 +112,7 @@ import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksEditor
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksPills
 import app.pantopus.android.ui.screens.moments.compose.marks.rememberLooked
 import app.pantopus.android.ui.screens.moments.studio.MomentsStudioStep
+import app.pantopus.android.ui.screens.moments.studio.StudioBeforeAfterActions
 import app.pantopus.android.ui.screens.moments.viewer.StageSystemBars
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -262,6 +263,12 @@ fun MomentsComposeScreen(
                         onTrayOpen = viewModel::readLookPicture,
                         lookPicture = viewModel.marksPicture,
                         onMention = viewModel::addMention,
+                        beforeAfter =
+                            StudioBeforeAfterActions(
+                                make = viewModel::beforeAfter,
+                                words = viewModel::setPairWords,
+                                takeApart = viewModel::takeApartBeforeAfter,
+                            ),
                     )
                 } else {
                     ReviewStep(

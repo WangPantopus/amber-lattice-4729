@@ -60,11 +60,14 @@ import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentEditBody
 import app.pantopus.android.data.api.models.moments.MomentStampKinds
 import app.pantopus.android.data.api.models.moments.MomentStampValueDto
+import app.pantopus.android.data.api.models.moments.beforeAfter
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.moments.serverCode
 import app.pantopus.android.data.pulse.StudioRepository
+import app.pantopus.android.ui.screens.moments.components.MomentBeforeAfterLayer
 import app.pantopus.android.ui.screens.moments.components.MomentImages
+import app.pantopus.android.ui.screens.moments.components.halfOf
 import app.pantopus.android.ui.screens.moments.components.rememberMomentImage
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -202,7 +205,11 @@ fun MomentsStudioEdit(
 ) {
     val draft = remember(moment.id) { EditDraft(moment) }
     val values = remember(moment.id) { moment.editValues() }
-    val picture = moment.width?.let { w -> moment.height?.let { h -> IntSize(w, h) } }
+    // Before and after: the stamps sit on one half's frame (CONTRACT 7g).
+    val picture =
+        moment.width
+            ?.let { w -> moment.height?.let { h -> IntSize(w, h) } }
+            ?.let { if (moment.beforeAfter != null) halfOf(it) else it }
     val screen = rememberScreenSize()
     val wet =
         remember(moment.id) {
@@ -217,6 +224,7 @@ fun MomentsStudioEdit(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
+        MomentBeforeAfterLayer(moment, still = true)
         StampsOnPicture(
             shown = draft.stamps.filter { it.kind in values },
             all = draft.stamps,

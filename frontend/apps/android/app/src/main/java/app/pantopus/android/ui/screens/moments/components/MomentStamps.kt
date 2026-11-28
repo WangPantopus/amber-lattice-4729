@@ -53,6 +53,7 @@ import app.pantopus.android.data.api.models.moments.MomentStampKinds
 import app.pantopus.android.data.api.models.moments.MomentStampPlacement
 import app.pantopus.android.data.api.models.moments.MomentStampValueDto
 import app.pantopus.android.data.api.models.moments.MomentWeatherDto
+import app.pantopus.android.data.api.models.moments.beforeAfter
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -364,7 +365,12 @@ fun MomentStampsOverlay(
         if (left > 0) delay(left)
         value = false
     }
-    val picture = moment.width?.let { w -> moment.height?.let { h -> IntSize(w, h) } }?.takeIf { moment.kind != "text" }
+    val picture =
+        moment.width
+            ?.let { w -> moment.height?.let { h -> IntSize(w, h) } }
+            ?.takeIf { moment.kind != "text" }
+            // Before and after: the stamps sit on one half's frame (CONTRACT 7g).
+            ?.let { if (moment.beforeAfter != null) halfOf(it) else it }
     MomentStampsDrawing(
         stamps = stamps,
         picture = picture,
