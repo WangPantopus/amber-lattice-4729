@@ -116,8 +116,12 @@ struct HolidayCardToStep: View {
             )
             results
             if LaunchFeatures.cardTable {
-                // Plan 11.6: the invitation is already here.
-                Text("They don’t need Pantopus yet. They join to open it.")
+                // Plan 11.6: the invitation is already here. With `improved` they can read it before joining (Wave 1).
+                Text(
+                    viewModel.improved
+                        ? "They don’t need Pantopus. They can open and read it right away."
+                        : "They don’t need Pantopus yet. They join to open it."
+                )
                     .font(.system(size: 14))
                     .foregroundStyle(HolidayCardDesk.muted(scheme))
                     .multilineTextAlignment(.center)
