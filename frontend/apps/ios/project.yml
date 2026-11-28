@@ -283,6 +283,8 @@ targets:
       # sources glob already includes them) and this extension, which
       # cannot import the app module.
       - path: Pantopus/Core/LiveActivity/GigActivityAttributes.swift
+      # The posting card (a Moment's photo or video on its way).
+      - path: Pantopus/Core/LiveActivity/PostingActivityAttributes.swift
       - path: Pantopus/Core/Widgets/GigWidgetSnapshot.swift
       # "Today at your address": its snapshot, and the living sky the Today
       # tab draws (the widget draws the same picture, still).
