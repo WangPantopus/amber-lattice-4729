@@ -190,6 +190,8 @@ data class MomentDto(
     val retake: app.pantopus.android.data.api.models.reinvented.MomentRetakeStateDto? = null,
     /** "Pulse, reinvented" (CONTRACT 8h): the convergence it joined, for a reader whose switch is on; else null. */
     val convergence: app.pantopus.android.data.api.models.reinvented.MomentConvergenceStateDto? = null,
+    /** "Pulse, reinvented" (CONTRACT 10b): a photo's motion clip, for a reader whose switch is on; else null. */
+    val motion: MomentMotionDto? = null,
 )
 
 /**
