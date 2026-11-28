@@ -202,39 +202,39 @@ private fun SwatchChips(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
             modifier
-                    .holdsItsFinger()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(PantopusColors.studioBar)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-        ) {
-            Text(
-                text = "Original",
-                color = if (tried == null) PantopusColors.studioBar else Color.White,
-                fontSize = 12.5.sp,
-                fontWeight = FontWeight.Bold,
+                .holdsItsFinger()
+                .clip(RoundedCornerShape(18.dp))
+                .background(PantopusColors.studioBar)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        Text(
+            text = "Original",
+            color = if (tried == null) PantopusColors.studioBar else Color.White,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.Bold,
+            modifier =
+                Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (tried == null) Color.White else PantopusColors.studioPillFill)
+                    .clickable(role = Role.Button) { onTry(null) }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .semantics { selected = tried == null }
+                    .testTag("moments.play.swatch.original"),
+        )
+        colors.forEachIndexed { at, hex ->
+            Box(
                 modifier =
                     Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (tried == null) Color.White else PantopusColors.studioPillFill)
-                        .clickable(role = Role.Button) { onTry(null) }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                        .semantics { selected = tried == null }
-                        .testTag("moments.play.swatch.original"),
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(movingWordsColor(hex))
+                        .border(if (tried == hex) 3.dp else 1.dp, Color.White, CircleShape)
+                        .clickable(role = Role.Button) { onTry(hex) }
+                        .semantics {
+                            contentDescription = "Try colour ${at + 1}"
+                            selected = tried == hex
+                        }.testTag("moments.play.swatch.color$at"),
             )
-            colors.forEachIndexed { at, hex ->
-                Box(
-                    modifier =
-                        Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(movingWordsColor(hex))
-                            .border(if (tried == hex) 3.dp else 1.dp, Color.White, CircleShape)
-                            .clickable(role = Role.Button) { onTry(hex) }
-                            .semantics {
-                                contentDescription = "Try colour ${at + 1}"
-                                selected = tried == hex
-                            }.testTag("moments.play.swatch.color$at"),
-                )
-            }
         }
+    }
 }
