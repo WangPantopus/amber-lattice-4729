@@ -400,6 +400,8 @@ data class CreateMomentBody(
     val elevation: MomentAltitudeBody? = null,
     /** The Studio's "Guess the spot" (CONTRACT 5a): `true` only when picked; left out otherwise. */
     val guess: Boolean? = null,
+    /** The Studio drawer's "Also show in Explore" (CONTRACT 6f): `true` only when chosen; left out otherwise. */
+    val explore: Boolean? = null,
 )
 
 /**

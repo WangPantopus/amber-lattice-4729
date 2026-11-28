@@ -37,6 +37,7 @@ import app.pantopus.android.ui.screens.compose.placepicker.PostPlaceTag
 import app.pantopus.android.ui.screens.compose.pulse.MediaLocationAccess
 import app.pantopus.android.ui.screens.compose.pulse.PickedPlace
 import app.pantopus.android.ui.screens.compose.pulse.readPickedPlace
+import app.pantopus.android.ui.screens.feed.reinvented.after.sentExplore
 import app.pantopus.android.ui.screens.moments.MomentsRoutes
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.line
@@ -1136,6 +1137,7 @@ class MomentsComposeViewModel
                         stamps = current.sentStamps,
                         elevation = current.stampElevation(usable),
                         guess = current.sentGuess,
+                        explore = current.sentExplore,
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)
