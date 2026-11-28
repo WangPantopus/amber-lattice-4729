@@ -96,6 +96,8 @@ struct ReinventedAtlasView: View {
     let onOpen: (MomentDTO) -> Void
     /// "Went because of you" (CONTRACT 8c), read beside the Atlas.
     @State private var strands = ReinventedStrandsModel()
+    /// The strands the reader is in, each theirs to take back (CONTRACT 8c, the follower's side).
+    @State private var strandsMine = ReinventedStrandsMineModel()
 
     private let columns = [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)]
 
@@ -128,11 +130,13 @@ struct ReinventedAtlasView: View {
                     .refreshable {
                         await model.load()
                         await strands.load()
+                        await strandsMine.load()
                     }
             }
         }
         .task { await model.load() }
         .task { await strands.load() }
+        .task { await strandsMine.load() }
         .accessibilityIdentifier("reinventedAtlas")
     }
 
@@ -144,6 +148,7 @@ struct ReinventedAtlasView: View {
                 .fixedSize(horizontal: false, vertical: true)
             // Strands (CONTRACT 8c): "Dana went because of your Moment", private to you; nothing when there are none.
             ReinventedWentBecauseOfYou(model: strands)
+            ReinventedStrandsYoureIn(model: strandsMine)
             if model.moments.isEmpty {
                 Text("Nothing here yet. The Moments you post from now on are kept here.")
                     .font(.system(size: 15))
