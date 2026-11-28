@@ -98,6 +98,13 @@ function cardEmailRemindersEnabled(env = process.env) {
   return env.NODE_ENV === 'production';
 }
 
+// Guest open-before-signup for unsealed Christmas card links and emails: recipients open the card on the browser table
+// before creating an account, then join to save it, write back or pass it on. Ordinary letters, bills and sealed cards
+// stay gated. On by default; CARD_GUEST_OPEN=0 is its emergency off.
+function cardGuestOpenEnabled(env = process.env) {
+  return isOn(env, 'CARD_GUEST_OPEN');
+}
+
 // First-launch scope (founder direction, 2026-09-27). These features are
 // hidden for the first launch; their code stays. A feature is OFF unless its
 // key is listed in LAUNCH_FEATURES (comma-separated, or "all"). The same keys
@@ -295,6 +302,7 @@ module.exports = {
   guidanceCardsEnabled,
   todayHouseEnabled,
   cardEmailRemindersEnabled,
+  cardGuestOpenEnabled,
   LAUNCH_FEATURE_KEYS,
   isLaunchFeatureEnabled,
   areLaunchFeaturesEnabled,

@@ -230,16 +230,16 @@ export function arrivalLine(card: SentHolidayCard): string {
     if (card.status === 'claimed') return `${who} opened your link and has your card.`;
     if (card.status === 'expired') return 'Nobody opened your link in 90 days.';
     return card.arrival === 'sealed_christmas'
-      ? 'It waits for someone to open your link and join. Then it’s in their mailbox and opens on Christmas morning.'
-      : 'It waits for someone to open your link and join.';
+      ? 'Ready to share. It stays sealed until Christmas morning, and anyone with your link can save it to their mailbox.'
+      : 'Ready to share. Anyone with your link can open and read it right away, and save it to keep it.';
   }
   if (card.by_email) {
-    if (card.status === 'claimed') return `${who} joined Pantopus and has your card.`;
+    if (card.status === 'claimed') return `${who} saved your card to their Pantopus mailbox.`;
     // Set for your 7 a.m. or Christmas morning: nothing is emailed before then.
-    if (card.email_send_at) return `We’ll email them ${emailGoesAt(card.email_send_at)}, your time. Once they join with that address, it waits in their mailbox.`;
+    if (card.email_send_at) return `We’ll email them ${emailGoesAt(card.email_send_at)}, your time. They can open and read it right in their browser.`;
     return card.arrival === 'sealed_christmas'
-      ? 'We emailed them. Once they join with that address, it waits in their mailbox and opens on Christmas morning.'
-      : 'We emailed them. It waits for them to join with that address and open it.';
+      ? 'We emailed them. It stays sealed until Christmas morning, when we’ll send a reminder to open it.'
+      : 'We emailed them. They can open and read it right in their browser, and join free to keep it or write back.';
   }
   // Their mail comes at 7 a.m. where they live, whatever the clock says here: the day by their clock.
   const day = shortDay(card.arrives_on ?? card.arrives_at);
@@ -423,8 +423,8 @@ export function ToStep({
           className="mt-2 h-12 w-full rounded-xl border border-[#d6cbb6] bg-[#fffdf8] px-4 text-[16px] text-[#111827] focus:border-[#8b1d1d] focus:outline-none focus:ring-2 focus:ring-[#8b1d1d]/30"
         />
         <p className={`mt-2 text-[14px] leading-5 ${m}`}>
-          They get an email saying you sent them a Christmas card. They join Pantopus with this address to open it. The
-          email never shows your note.
+          They get an email saying you sent them a Christmas card. They can open and read it right away — no account
+          needed — and join free anytime to keep it or write back. The email never shows your note.
         </p>
         <button type="submit" data-testid="sendCardEmailDone" disabled={!emailOk || (many && full)} className={`${primary} mt-5`} style={{ backgroundColor: WAX }}>
           {many ? 'Add to the list' : 'Continue'}
@@ -501,7 +501,7 @@ export function ToStep({
       </div>
       {/* Sending to someone not on Pantopus already invites them (design plan 11.6): said once, above both ways. */}
       {launchFeatures.cardTable ? (
-        <p data-testid="sendCardInviteLine" className={`mt-5 text-center text-[14px] leading-5 ${m}`}>They don&rsquo;t need Pantopus yet. They join to open it.</p>
+        <p data-testid="sendCardInviteLine" className={`mt-5 text-center text-[14px] leading-5 ${m}`}>They don&rsquo;t need Pantopus. They can open and read it right away.</p>
       ) : null}
       <button
         type="button"
@@ -526,7 +526,7 @@ export function ToStep({
             <Link2 className="h-[18px] w-[18px]" aria-hidden />
             Send it by link
           </button>
-          <p className={`mx-auto mt-0.5 max-w-[340px] text-[13px] leading-[18px] ${m}`}>Text it, or paste it anywhere. The first person to open it keeps the card.</p>
+          <p className={`mx-auto mt-0.5 max-w-[340px] text-[13px] leading-[18px] ${m}`}>Text it, or paste it anywhere. They can open it right away, and save it to keep it.</p>
         </div>
       ) : null}
     </div>
@@ -1235,10 +1235,10 @@ function arrivalChoice(
   if (to.kind === 'list') return listArrivalChoice(arrival, cards, to.entries);
   // By email, its email goes at your next 7 a.m. or on Christmas morning (the other person's clock isn't known).
   if (to.kind === 'email' && arrival === 'next_morning') {
-    return { title: 'With the morning mail', detail: `We email them ${emailGoesAt(cards.next_round_at)}, your time. They can open it once they join with that address.` };
+    return { title: 'With the morning mail', detail: `We email them ${emailGoesAt(cards.next_round_at)}, your time. They can open and read it right in their browser.` };
   }
   if (to.kind === 'email' && arrival === 'christmas_morning') {
-    return { title: 'On Christmas morning', detail: `We email them ${emailGoesAt(cards.christmas_morning_at)}, your time. They can open it once they join with that address.` };
+    return { title: 'On Christmas morning', detail: `We email them ${emailGoesAt(cards.christmas_morning_at)}, your time. They can open and read it right in their browser.` };
   }
   const day = shortDay(theirDay ?? cards.next_round_at);
   const name = to.kind === 'person' ? firstName(to.name) : 'they';
@@ -1249,16 +1249,16 @@ function arrivalChoice(
       return {
         title: 'Sealed until Christmas',
         detail: to.kind === 'link'
-          ? 'Whoever opens your link and joins gets it now, with a “Do not open until Christmas” seal. It opens on December 25.'
+          ? 'It waits with a “Do not open until Christmas” seal and opens on December 25. They can save it to their mailbox anytime.'
           : to.kind === 'email'
-          ? 'They get an email now. Once they join with that address, it waits in their mailbox with a “Do not open until Christmas” seal. It opens on December 25.'
+          ? 'They get an email now with a “Do not open until Christmas” seal, and a reminder on Christmas morning when it opens.'
           : `It comes with the ${day} morning mail and waits in their mailbox with a “Do not open until Christmas” seal. It opens on December 25.`,
       };
     case 'christmas_morning':
       return { title: 'On Christmas morning', detail: `${shortDay(cards.christmas_morning_at)}, with the 7 a.m. mail.` };
     default:
-      if (to.kind === 'link') return { title: 'Right away', detail: 'Whoever opens your link can open the card as soon as they join.' };
-      return { title: 'Right away, by email', detail: 'They get an email now and can open it once they join with that address.' };
+      if (to.kind === 'link') return { title: 'Right away', detail: 'Whoever opens your link can open and read the card right away — no account needed.' };
+      return { title: 'Right away, by email', detail: 'They get an email now and can open and read it right in their browser — no account needed.' };
   }
 }
 
